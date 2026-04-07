@@ -1,0 +1,131 @@
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg: #1e1e2e;
+  --bg2: #27273a;
+  --bg3: #313145;
+  --border: #3e3e56;
+  --border-subtle: #2e2e44;
+  --accent: #7c6af7;
+  --accent2: #5b4fe0;
+  --accent-glow: rgba(124, 106, 247, 0.12);
+  --text: #e2e2f0;
+  --text2: #9898b8;
+  --text3: #6a6a8a;
+  --danger: #e05b5b;
+  --success: #5be08a;
+  --warn: #e0b85b;
+  --canvas-bg: #12121e;
+  --ruler-bg: #27273a;
+  --ruler-text: #7878a0;
+  font-size: 14px;
+}
+
+html, body, #root {
+  width: 100%; height: 100%; overflow: hidden;
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Segoe UI Variable', 'Segoe UI', -apple-system, sans-serif;
+  font-weight: 450;
+  line-height: 1.4;
+  user-select: none;
+}
+
+/* ── Scrollbars ─────────────────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: var(--bg2); }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+/* ── Buttons ────────────────────────────────────────────────────────────── */
+button {
+  cursor: pointer; border: none; border-radius: 5px;
+  font-size: 13px; font-weight: 500; font-family: inherit;
+  padding: 5px 12px; transition: all 0.15s;
+  display: inline-flex; align-items: center; gap: 5px;
+}
+.btn-primary { background: var(--accent); color: #fff; }
+.btn-primary:hover { background: var(--accent2); }
+.btn-secondary { background: var(--bg3); color: var(--text); border: 1px solid var(--border); }
+.btn-secondary:hover { background: var(--border); }
+.btn-danger { background: transparent; color: var(--danger); border: 1px solid var(--danger); }
+.btn-danger:hover { background: var(--danger); color: #fff; }
+.btn-icon { background: transparent; color: var(--text2); padding: 4px 6px; border-radius: 4px; }
+.btn-icon:hover { background: var(--bg3); color: var(--text); }
+button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* ── Inputs ─────────────────────────────────────────────────────────────── */
+input, select {
+  background: var(--bg); color: var(--text);
+  border: 1px solid var(--border); border-radius: 4px;
+  padding: 4px 8px; font-size: 13px; font-weight: 500; font-family: inherit;
+  outline: none; width: 100%;
+}
+input:focus, select:focus { border-color: var(--accent); }
+input[type="checkbox"] { width: auto; cursor: pointer; accent-color: var(--accent); }
+label { font-size: 11px; font-weight: 500; color: var(--text2); margin-bottom: 2px; display: block; }
+
+/* ── Dividers / sections ─────────────────────────────────────────────────── */
+.section-title {
+  font-size: 11px; font-weight: 600; letter-spacing: 0.08em;
+  text-transform: uppercase; color: var(--text3);
+  padding: 8px 10px 4px; border-bottom: 1px solid var(--border);
+  margin-bottom: 6px;
+}
+
+/* ── Overlay / Modal ────────────────────────────────────────────────────── */
+.overlay-backdrop {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.6);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 1000;
+}
+.modal {
+  background: var(--bg2); border: 1px solid var(--border);
+  border-radius: 10px; padding: 20px; min-width: 380px;
+  max-width: 600px; width: 100%;
+}
+.modal h2 { font-size: 16px; margin-bottom: 12px; }
+
+/* ── Toast ──────────────────────────────────────────────────────────────── */
+.toast {
+  position: fixed; bottom: 20px; right: 20px;
+  background: var(--bg3); border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  padding: 10px 14px; border-radius: 6px; max-width: 360px;
+  font-size: 13px; z-index: 900; animation: slideIn 0.2s ease;
+}
+@keyframes slideIn {
+  from { transform: translateX(20px); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+
+/* ── HUD ────────────────────────────────────────────────────────────────── */
+.hud {
+  position: fixed; background: rgba(0,0,0,0.8);
+  color: #fff; font-size: 11px; font-family: 'Courier New', monospace;
+  padding: 4px 8px; border-radius: 4px; pointer-events: none;
+  z-index: 800; white-space: nowrap;
+  border: 1px solid rgba(255,255,255,0.15);
+}
+
+/* ── Canvas scroll areas ─────────────────────────────────────────────────── */
+.canvas-scroll-area::-webkit-scrollbar { width: 8px; height: 8px; }
+.canvas-scroll-area::-webkit-scrollbar-track { background: transparent; }
+.canvas-scroll-area::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 4px; }
+.canvas-scroll-area::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.2); }
+.canvas-scroll-area::-webkit-scrollbar-corner { background: transparent; }
+
+/* ── Template list card ──────────────────────────────────────────────────── */
+.template-card {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-left: 3px solid transparent;
+  border-radius: 8px;
+  padding: 11px 14px;
+  margin-bottom: 7px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  transition: border-left-color 0.15s;
+}
+.template-card:hover { border-left-color: var(--accent); }

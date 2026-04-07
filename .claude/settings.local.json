@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ls -la /c/Users/julie/Documents/PROYECTOS/qrlabel/qrlabel-v8/qrlabel/src/renderer/src/components/*/)"
+    ]
+  }
+}
