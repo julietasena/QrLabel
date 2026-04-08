@@ -1,8 +1,8 @@
 import React from 'react'
 import {
-  Undo2, Redo2, ZoomIn, ZoomOut, Ruler,
+  Undo2, Redo2, ZoomIn, ZoomOut,
   Plus, Save, Printer, Tag, LayoutGrid,
-  QrCode, Clock, Eye, EyeOff
+  Clock, Eye, EyeOff
 } from 'lucide-react'
 import { useTemplateStore } from '../../store/templateStore'
 import { useShallow } from 'zustand/react/shallow'

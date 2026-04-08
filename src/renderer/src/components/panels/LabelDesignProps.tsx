@@ -1,4 +1,5 @@
 import React from 'react'
+import { panelContainer, sectionTitleInset } from './panelStyles'
 import { useTemplateStore } from '../../store/templateStore'
 import { useShallow } from 'zustand/react/shallow'
 import { NumberInput } from '../common/NumberInput'
@@ -14,8 +15,8 @@ export function LabelDesignProps() {
   const ld = template.labelDesign
 
   return (
-    <div style={{ padding: '0 10px', display: 'flex', flexDirection: 'column', gap: 8 }}>
-      <div className="section-title" style={{ margin: '0 -10px' }}>Etiqueta (bounding box)</div>
+    <div style={panelContainer}>
+      <div className="section-title" style={sectionTitleInset}>Etiqueta (bounding box)</div>
       <NumberInput label={`Ancho (${u.label})`} value={u.toDisplay(ld.widthMm)}
         min={1} step={u.unit === 'px' ? 1 : 0.5}
         onChange={v => updateLabelDesignSize(u.fromDisplay(v), ld.heightMm)} />
@@ -23,7 +24,7 @@ export function LabelDesignProps() {
         min={1} step={u.unit === 'px' ? 1 : 0.5}
         onChange={v => updateLabelDesignSize(ld.widthMm, u.fromDisplay(v))} />
 
-      <div className="section-title" style={{ margin: '0 -10px' }}>
+      <div className="section-title" style={sectionTitleInset}>
         QR Blocks ({ld.qrBlocks.length})
       </div>
       <button className="btn-primary" onClick={addQrBlock}>+ Agregar QR Block</button>

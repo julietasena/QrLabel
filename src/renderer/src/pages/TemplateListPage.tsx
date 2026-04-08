@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useMemo } from 'react'
-import { FilePlus, FolderOpen, Pencil, Trash2, Clock, Printer } from 'lucide-react'
+import { FolderOpen, Pencil, Trash2, Clock, Printer } from 'lucide-react'
 import { useTemplateStore } from '../store/templateStore'
 import { useShallow } from 'zustand/react/shallow'
 import { formatPayload } from '../../../shared/numberFormat'

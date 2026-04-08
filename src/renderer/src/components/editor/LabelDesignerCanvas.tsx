@@ -4,14 +4,15 @@ import type Konva from 'konva'
 import { useTemplateStore } from '../../store/templateStore'
 import { useShallow } from 'zustand/react/shallow'
 import { useTransformHUD } from '../../hooks/useTransformHUD'
+import { useQrImage } from '../../hooks/useQrImage'
+import { useTransformerAttach } from '../../hooks/useTransformerAttach'
+import { useCanvasScroll } from '../../hooks/useCanvasScroll'
+import { CANVAS_MARGIN, PT_TO_CANVAS_SCALE } from '../../constants/editor'
 import { Rulers, RULER_SIZE } from './Rulers'
 import { AlignToolbar } from './AlignToolbar'
 import { mmToKonva, konvaToMm, PT_TO_MM } from '../../../../shared/units'
-import { generateQrDataUrl } from '../../../../shared/qr'
 import { previewPayloadFromConfig } from '../../../../shared/numberFormat'
 import type { QrBlock } from '../../../../shared/schema'
-
-const CANVAS_MARGIN = 80
 
 // ── Rotation-aware content bounds ─────────────────────────────────────────────
 // Computes the axis-aligned bounding box of a QrBlock's content (QR image + text)
@@ -98,32 +99,17 @@ function QrBlockNode({
   }, []) // eslint-disable-line
   const trRef    = useRef<Konva.Transformer>(null)
   const textRef  = useRef<Konva.Text>(null)
-  const [qrImg, setQrImg] = useState<HTMLImageElement | null>(null)
+  const qrImg = useQrImage(payload)
   const [textX, setTextX] = useState(0)
   // Actual rendered text height in Konva px. For wrapText=true the text can span multiple
   // lines, so fp (1 line) underestimates. We measure via textRef.current.height() after layout.
-  const [textActualH, setTextActualH] = useState(() => Math.max(6, block.fontSize * zoom * 1.333))
+  const [textActualH, setTextActualH] = useState(() => Math.max(6, block.fontSize * zoom * PT_TO_CANVAS_SCALE))
   const toK = (mm: number) => mmToKonva(mm, zoom)
 
-  useEffect(() => {
-    let cancelled = false
-    generateQrDataUrl(payload).then(url => {
-      if (cancelled) return
-      const img = new window.Image(); img.src = url
-      img.onload = () => { if (!cancelled) setQrImg(img) }
-    })
-    return () => { cancelled = true }
-  }, [payload])
-
-  // Wire the Transformer to its Group after mount (only rendered when showTransformer=true)
-  useEffect(() => {
-    if (!showTransformer || !trRef.current || !groupRef.current) return
-    trRef.current.nodes([groupRef.current])
-    trRef.current.getLayer()?.batchDraw()
-  }, [showTransformer])
+  useTransformerAttach(showTransformer, trRef, groupRef)
 
   const sp = toK(block.sizeMm)
-  const fp = Math.max(6, block.fontSize * zoom * 1.333)
+  const fp = Math.max(6, block.fontSize * zoom * PT_TO_CANVAS_SCALE)
   const tp = toK(block.textOffsetMm)
 
   useLayoutEffect(() => {
@@ -471,34 +457,7 @@ export function LabelDesignerCanvas() {
     }
   }, [contentX, contentY])
 
-  // Restore saved scroll or center the view.
-  // Triggered by containerSize changes so we retry until the scroll container
-  // is large enough to actually reach the saved position.
-  const savedLabelScroll = useRef(labelScrollPos)
-  const scrollAppliedRef = useRef(false)
-  useEffect(() => {
-    if (scrollAppliedRef.current) return
-    const el = scrollRef.current; if (!el) return
-    const { x, y } = savedLabelScroll.current
-    if (x !== 0 || y !== 0) {
-      el.scrollLeft = x
-      el.scrollTop  = y
-      if (el.scrollLeft >= x - 1 && el.scrollTop >= y - 1) scrollAppliedRef.current = true
-    } else {
-      el.scrollLeft = Math.max(0, (el.scrollWidth  - el.clientWidth)  / 2)
-      el.scrollTop  = Math.max(0, (el.scrollHeight - el.clientHeight) / 2)
-      scrollAppliedRef.current = true
-    }
-  }, [containerSize]) // eslint-disable-line
-
-  // When zoom changes (not on mount): re-center view
-  const zoomMountRef = useRef(true)
-  useEffect(() => {
-    if (zoomMountRef.current) { zoomMountRef.current = false; return }
-    const el = scrollRef.current; if (!el) return
-    el.scrollLeft = Math.max(0, (el.scrollWidth  - el.clientWidth)  / 2)
-    el.scrollTop  = Math.max(0, (el.scrollHeight - el.clientHeight) / 2)
-  }, [zoom]) // eslint-disable-line
+  useCanvasScroll(scrollRef, labelScrollPos, containerSize, zoom)
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', width: '100%', height: '100%' }}>

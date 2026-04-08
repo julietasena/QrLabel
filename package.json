@@ -17,6 +17,20 @@
     "zod": "^3.22.4",
     "zustand": "^4.5.2"
   },
+  "build": {
+    "appId": "com.qrlabel.app",
+    "productName": "QRLabel",
+    "files": ["out/**/*"],
+    "win": {
+      "target": "nsis",
+      "signAndEditExecutable": false,
+      "icon": "resources/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
+  },
   "devDependencies": {
     "@types/node": "^20.11.5",
     "@types/qrcode": "^1.5.5",

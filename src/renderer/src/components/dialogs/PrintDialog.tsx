@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { useTemplateStore } from '../../store/templateStore'
 import { NumberInput } from '../common/NumberInput'
-import { formatPayload, countLabels, validatePrintRange } from '../../../../shared/numberFormat'
+import { formatPayload, countLabels, validatePrintRange, computePageCount, computeTotalLabels } from '../../../../shared/numberFormat'
 import { MAX_LABELS } from '../../../../shared/schema'
 import type { PrintJobConfig } from '../../../../shared/schema'
 
@@ -34,12 +34,8 @@ export function PrintDialog({ onClose, onStartPrint }: Props) {
   }, [])
 
   const labelCount  = countLabels({ start, end, step, padWidth, prefix, suffix })
-  const pageCount   = numberingMode === 'offset'
-    ? labelCount
-    : (placements.length > 0 ? Math.ceil(labelCount / placements.length) : 0)
-  const totalLabels = numberingMode === 'offset'
-    ? labelCount * (placements.length || 1)
-    : labelCount
+  const pageCount   = computePageCount(labelCount, placements.length, numberingMode)
+  const totalLabels = computeTotalLabels(labelCount, placements.length || 1, numberingMode)
   const previewFirst = formatPayload(start, { padWidth, prefix, suffix })
   const previewLast  = labelCount > 1
     ? formatPayload(end, { padWidth, prefix, suffix })

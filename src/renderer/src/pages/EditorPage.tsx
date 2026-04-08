@@ -10,7 +10,7 @@ import { PrintDialog } from '../components/dialogs/PrintDialog'
 import { ProgressModal } from '../components/dialogs/ProgressModal'
 import { HUD } from '../components/editor/HUD'
 import type { PrintJobConfig, PrintRecord, PrintProgress } from '../../../shared/schema'
-import { countLabels } from '../../../shared/numberFormat'
+import { countLabels, computeTotalLabels } from '../../../shared/numberFormat'
 
 interface Props { onBack: () => void }
 
@@ -124,7 +124,7 @@ export function EditorPage({ onBack }: Props) {
     const { start, end, printerName, printConfig, placements } = config
     const { numberingMode } = config.printConfig
     const actualPrinted = finalProgress.status === 'done'
-      ? (numberingMode === 'offset' ? labelCount * placements.length : labelCount)
+      ? computeTotalLabels(labelCount, placements.length, numberingMode)
       : Math.max(0, finalProgress.currentPage - 1) * placements.length
     const record: PrintRecord = {
       start, end,

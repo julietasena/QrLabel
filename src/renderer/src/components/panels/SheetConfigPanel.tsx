@@ -1,4 +1,5 @@
 import React from 'react'
+import { panelContainer, sectionTitleInset, fieldGroup } from './panelStyles'
 import { useTemplateStore } from '../../store/templateStore'
 import { useShallow } from 'zustand/react/shallow'
 import { NumberInput } from '../common/NumberInput'
@@ -16,10 +17,10 @@ export function SheetConfigPanel() {
   const numberingMode = template.printConfig.numberingMode
 
   return (
-    <div style={{ padding: '0 10px', display: 'flex', flexDirection: 'column', gap: 8 }}>
-      <div className="section-title" style={{ margin: '0 -10px' }}>Hoja</div>
+    <div style={panelContainer}>
+      <div className="section-title" style={sectionTitleInset}>Hoja</div>
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+      <div style={fieldGroup}>
         <label>Tamaño</label>
         <select value={page.preset} onChange={e => {
           const preset = e.target.value as PagePreset
@@ -52,7 +53,7 @@ export function SheetConfigPanel() {
         </div>
       </div>
 
-      <div className="section-title" style={{ margin: '0 -10px' }}>Unidades</div>
+      <div className="section-title" style={sectionTitleInset}>Unidades</div>
       <select value={unit} onChange={e => updateUnit(e.target.value as Unit)}>
         <option value="mm">Milímetros (mm)</option>
         <option value="cm">Centímetros (cm)</option>

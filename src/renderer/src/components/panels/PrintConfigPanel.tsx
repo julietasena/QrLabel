@@ -1,4 +1,5 @@
 import React from 'react'
+import { panelContainer, sectionTitleInset, fieldGroup } from './panelStyles'
 import { useTemplateStore } from '../../store/templateStore'
 import { useShallow } from 'zustand/react/shallow'
 import { NumberInput } from '../common/NumberInput'
@@ -13,16 +14,16 @@ export function PrintConfigPanel() {
   const preview = previewPayloadFromConfig(printConfig)
 
   return (
-    <div style={{ padding: '0 10px', display: 'flex', flexDirection: 'column', gap: 8 }}>
-      <div className="section-title" style={{ margin: '0 -10px' }}>Formato QR (preview)</div>
+    <div style={panelContainer}>
+      <div className="section-title" style={sectionTitleInset}>Formato QR (preview)</div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+        <div style={fieldGroup}>
           <label>Prefijo</label>
           <input value={printConfig.prefix} onChange={e => updatePrintConfig({ prefix: e.target.value })}
             placeholder="ej: GGC" />
         </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+        <div style={fieldGroup}>
           <label>Sufijo</label>
           <input value={printConfig.suffix} onChange={e => updatePrintConfig({ suffix: e.target.value })}
             placeholder="ej: -A" />

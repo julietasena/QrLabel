@@ -1,6 +1,6 @@
 import type { Unit } from './schema'
 
-export const SCREEN_DPI = 96
+const SCREEN_DPI = 96
 export const MM_TO_PX_BASE = SCREEN_DPI / 25.4 // ~3.7795 px per mm at 96dpi
 export const PT_TO_MM = 25.4 / 72             // 1 typographic point in mm
 
@@ -32,14 +32,14 @@ export function unitLabel(unit: Unit): string {
   return unit
 }
 
-export function formatValue(mm: number, unit: Unit, decimals = 2): string {
-  return mmToUnit(mm, unit).toFixed(decimals)
-}
-
 export function unitPrecision(unit: Unit): number {
   switch (unit) {
     case 'px': return 0
     case 'cm': return 3
     default: return 2
   }
+}
+
+export function normalizeRotation(deg: number): number {
+  return ((Math.floor(deg) % 360) + 360) % 360
 }

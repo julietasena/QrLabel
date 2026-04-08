@@ -2,7 +2,7 @@ import { ipcMain, BrowserWindow } from 'electron'
 import log from 'electron-log'
 import type { PrintJobConfig, PrintProgress } from '../../shared/schema'
 import { renderPageHtml } from '../print/pageRenderer'
-import { formatPayload } from '../../shared/numberFormat'
+import { formatPayload, computePageCount } from '../../shared/numberFormat'
 import { MM_TO_PX_BASE as PX_PER_MM } from '../../shared/units'
 
 type PrintStatus = 'idle' | 'printing' | 'paused' | 'error' | 'done' | 'cancelled'
@@ -116,9 +116,7 @@ export function registerPrintHandlers(mainWin: BrowserWindow): void {
     const numbers: number[] = []
     for (let n = start; n <= end; n += step) numbers.push(n)
 
-    const totalPages = numberingMode === 'offset'
-      ? numbers.length
-      : Math.ceil(numbers.length / placements.length)
+    const totalPages = computePageCount(numbers.length, placements.length, numberingMode)
     state = {
       status: 'printing', currentPage: 0, totalPages,
       currentLabel: '', currentNumber: 0, cancelFlag: false

@@ -1,8 +1,11 @@
-import React, { useRef, useEffect } from 'react'
+import React from 'react'
+import { panelContainer, sectionTitleInset } from './panelStyles'
 import { useTemplateStore } from '../../store/templateStore'
 import { useShallow } from 'zustand/react/shallow'
 import { NumberInput } from '../common/NumberInput'
 import { useUnits } from '../../hooks/useUnits'
+import { useUndoOnFocus } from '../../hooks/useUndoOnFocus'
+import { normalizeRotation } from '../../../../shared/units'
 import type { Placement } from '../../../../shared/schema'
 
 interface Props { placement: Placement }
@@ -17,19 +20,12 @@ export function PlacementProps({ placement }: Props) {
   const numberingMode = useTemplateStore(s => s.template.printConfig.numberingMode)
   const u = useUnits()
 
-  // U2: Push ONE undo snapshot on first field focus per placement selection.
-  const undoPushedRef = useRef(false)
-  useEffect(() => { undoPushedRef.current = false }, [placement.id])
-  const onFocusField = () => {
-    if (undoPushedRef.current) return
-    undoPushedRef.current = true
-    useTemplateStore.getState().pushUndo()
-  }
+  const onFocusField = useUndoOnFocus(placement.id)
   const upd = (changes: Partial<Placement>) => updatePlacement(placement.id, changes, false)
 
   return (
-    <div style={{ padding: '0 10px', display: 'flex', flexDirection: 'column', gap: 8 }}>
-      <div className="section-title" style={{ margin: '0 -10px' }}>
+    <div style={panelContainer}>
+      <div className="section-title" style={sectionTitleInset}>
         Placement {selectedIds.length > 1 ? `(${selectedIds.length} sel.)` : ''}
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
@@ -42,7 +38,7 @@ export function PlacementProps({ placement }: Props) {
       </div>
       <NumberInput label="Rotación (°)" value={placement.rotationDeg}
         min={0} max={359} step={1} onFocus={onFocusField}
-        onChange={v => upd({ rotationDeg: ((Math.floor(v) % 360) + 360) % 360 })} />
+        onChange={v => upd({ rotationDeg: normalizeRotation(v) })} />
       <NumberInput label="Offset (#)" value={placement.numberOffset ?? 0}
         min={0} step={1}
         disabled={numberingMode === 'sequential'}
