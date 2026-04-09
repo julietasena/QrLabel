@@ -115,7 +115,10 @@ export interface PrintProgress {
   totalPages: number
   currentLabel: string
   currentNumber: number
+  confirmedPages: number
+  confirmedLabels: number
   status: 'printing' | 'spooled' | 'paused' | 'error' | 'done' | 'cancelled'
+  stage?: 'starting' | 'spooling' | 'waiting_printer_ack' | 'confirmed'
   errorMessage?: string
 }
 

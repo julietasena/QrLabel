@@ -5,7 +5,7 @@ interface Props { onClose: (finalProgress: PrintProgress) => void }
 
 export function ProgressModal({ onClose }: Props) {
   const [progress, setProgress] = useState<PrintProgress>({
-    currentPage: 0, totalPages: 1, currentLabel: '', currentNumber: 0, status: 'printing'
+    currentPage: 0, totalPages: 1, currentLabel: '', currentNumber: 0, confirmedPages: 0, confirmedLabels: 0, status: 'printing'
   })
 
   useEffect(() => {
@@ -13,7 +13,7 @@ export function ProgressModal({ onClose }: Props) {
     return remove
   }, [])
 
-  // Watchdog: if no progress event arrives within 30 s while printing,
+  // Watchdog: aligned with backend confirmation timeout (120 s + margin),
   // transition to error so the modal doesn't freeze indefinitely.
   const watchdogRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   useEffect(() => {
@@ -23,14 +23,15 @@ export function ProgressModal({ onClose }: Props) {
         setProgress(p => ({
           ...p,
           status: 'error',
-          errorMessage: 'Sin respuesta del proceso de impresión (timeout 30 s). Verificá que la impresora esté disponible.'
+          errorMessage: 'Sin respuesta del proceso de impresión (timeout 150 s). Verificá que la impresora esté disponible.'
         }))
-      }, 30_000)
+      }, 150_000)
     }
     return () => { if (watchdogRef.current) clearTimeout(watchdogRef.current) }
   }, [progress])
 
-  const pct = progress.totalPages > 0 ? Math.round(progress.currentPage / progress.totalPages * 100) : 0
+  const displayedPage = progress.confirmedPages ?? progress.currentPage
+  const pct = progress.totalPages > 0 ? Math.round(displayedPage / progress.totalPages * 100) : 0
   const { status } = progress
   const done = status === 'done'
   const cancelled = status === 'cancelled'
@@ -59,7 +60,7 @@ export function ProgressModal({ onClose }: Props) {
         {/* Progress bar */}
         <div style={{ marginBottom: 12 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: 'var(--text2)', marginBottom: 5 }}>
-            <span>Página {progress.currentPage} / {progress.totalPages}</span>
+            <span>Página confirmada {displayedPage} / {progress.totalPages}</span>
             <span>{pct}%</span>
           </div>
           <div style={{ height: 10, background: 'var(--bg3)', borderRadius: 5, overflow: 'hidden' }}>
@@ -102,7 +103,7 @@ export function ProgressModal({ onClose }: Props) {
         {/* Done summary */}
         {done && (
           <p style={{ fontSize: 11, color: 'var(--success)', marginBottom: 12 }}>
-            ✅ Se imprimieron {progress.currentPage} páginas correctamente.
+            ✅ Se imprimieron {progress.confirmedPages} páginas correctamente ({progress.confirmedLabels} etiquetas).
           </p>
         )}
 

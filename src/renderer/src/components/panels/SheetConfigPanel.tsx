@@ -40,9 +40,9 @@ export function SheetConfigPanel() {
 
       {page.preset === 'custom' && (
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
-          <NumberInput label="Ancho (mm)" value={page.widthMm} min={10} max={1000}
+          <NumberInput label="Ancho (mm)" value={page.widthMm} min={10}
             onChange={v => updatePage({ ...page, widthMm: v })} />
-          <NumberInput label="Alto (mm)" value={page.heightMm} min={10} max={1000}
+          <NumberInput label="Alto (mm)" value={page.heightMm} min={10}
             onChange={v => updatePage({ ...page, heightMm: v })} />
         </div>
       )}

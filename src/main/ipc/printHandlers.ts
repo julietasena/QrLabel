@@ -14,13 +14,15 @@ interface PrintState {
   totalPages: number
   currentLabel: string
   currentNumber: number
+  confirmedPages: number
+  confirmedLabels: number
   resolveResume?: () => void
   cancelFlag: boolean
 }
 
 let state: PrintState = {
   status: 'idle', currentPage: 0, totalPages: 0,
-  currentLabel: '', currentNumber: 0, cancelFlag: false
+  currentLabel: '', currentNumber: 0, confirmedPages: 0, confirmedLabels: 0, cancelFlag: false
 }
 
 function send(win: BrowserWindow, extra: Partial<PrintProgress> = {}) {
@@ -30,6 +32,8 @@ function send(win: BrowserWindow, extra: Partial<PrintProgress> = {}) {
     totalPages:    state.totalPages,
     currentLabel:  state.currentLabel,
     currentNumber: state.currentNumber,
+    confirmedPages: state.confirmedPages,
+    confirmedLabels: state.confirmedLabels,
     status: state.status as PrintProgress['status'],
     ...extra
   }
@@ -161,6 +165,16 @@ const ERROR_KEYWORDS: Record<string, string> = {
   'error':             'Error en la impresora',
 }
 
+async function verifyNoLatePrinterError(printerName: string, checks = 3, intervalMs = 350): Promise<void> {
+  // Some drivers remove the job from queue before exposing the final hardware error.
+  // Do a short post-disappearance health window before confirming success.
+  for (let i = 0; i < checks; i++) {
+    const printerSt = await getPrinterStatus(printerName)
+    if (printerSt.isError) throw new Error(printerSt.message)
+    if (i < checks - 1) await new Promise(r => setTimeout(r, intervalMs))
+  }
+}
+
 async function waitForJobCompletion(
   printerName: string,
   preSnapshot: Set<number>,   // job IDs in the queue BEFORE webContents.print() was called
@@ -192,8 +206,7 @@ async function waitForJobCompletion(
     // No job appeared — either the printer discarded it immediately (error)
     // or it completed so fast it was already gone before our first poll
     // (virtual printers, fast local printers).
-    const printerSt = await getPrinterStatus(printerName)
-    if (printerSt.isError) throw new Error(printerSt.message)
+    await verifyNoLatePrinterError(printerName)
     log.info('  No job appeared in queue — assuming fast completion or virtual printer')
     return
   }
@@ -210,6 +223,7 @@ async function waitForJobCompletion(
 
     const ourJob = jobs.find(j => j.id === ourJobId)
     if (!ourJob) {
+      await verifyNoLatePrinterError(printerName)
       log.info(`  Job ID ${ourJobId} left the queue — print confirmed`)
       return  // job completed successfully
     }
@@ -300,10 +314,11 @@ export function registerPrintHandlers(mainWin: BrowserWindow): void {
     const totalPages = computePageCount(numbers.length, placements.length, numberingMode)
     state = {
       status: 'printing', currentPage: 0, totalPages,
-      currentLabel: '', currentNumber: 0, cancelFlag: false
+      currentLabel: '', currentNumber: 0, confirmedPages: 0, confirmedLabels: 0, cancelFlag: false
     }
 
     log.info(`=== PRINT START: ${numbers.length} numbers, ${totalPages} pages, mode="${numberingMode}", printer="${printerName}" ===`)
+    send(mainWin, { status: 'printing', stage: 'starting' })
 
     ;(async () => {
       try {
@@ -348,8 +363,11 @@ export function registerPrintHandlers(mainWin: BrowserWindow): void {
               })
               await printOnePage(html, printerName, page.widthMm, page.heightMm, () => {
                 state.status = 'spooled'
-                send(mainWin)
+                send(mainWin, { status: 'spooled', stage: 'waiting_printer_ack' })
               })
+              state.confirmedPages += 1
+              state.confirmedLabels += payloads.length
+              send(mainWin, { status: 'printing', stage: 'confirmed' })
               lastErr = null
               log.info(`  Page ${state.currentPage} OK`)
               break

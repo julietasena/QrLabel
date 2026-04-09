@@ -110,9 +110,13 @@ export function EditorPage({ onBack }: Props) {
     const { start, end, printConfig } = config
     const labelCount = countLabels({ start, end, step: printConfig.step, padWidth: printConfig.padWidth, prefix: printConfig.prefix, suffix: printConfig.suffix })
     pendingPrintRef.current = { config, labelCount }
-    setShowProgress(true)
     const res = await window.electronAPI.startPrint(config)
-    if (!res.ok) showToast(res.error ?? 'Error al iniciar impresión', 'error')
+    if (!res.ok) {
+      pendingPrintRef.current = null
+      showToast(res.error ?? 'Error al iniciar impresión', 'error')
+      return
+    }
+    setShowProgress(true)
   }
 
   async function handleProgressClose(finalProgress: PrintProgress) {
@@ -123,9 +127,11 @@ export function EditorPage({ onBack }: Props) {
     const { config, labelCount } = pending
     const { start, end, printerName, printConfig, placements } = config
     const { numberingMode } = config.printConfig
-    const actualPrinted = finalProgress.status === 'done'
-      ? computeTotalLabels(labelCount, placements.length, numberingMode)
-      : Math.max(0, finalProgress.currentPage - 1) * placements.length
+    const actualPrinted = typeof finalProgress.confirmedLabels === 'number'
+      ? finalProgress.confirmedLabels
+      : finalProgress.status === 'done'
+        ? computeTotalLabels(labelCount, placements.length, numberingMode)
+        : Math.max(0, finalProgress.currentPage - 1) * placements.length
     const record: PrintRecord = {
       start, end,
       step: printConfig.step, padWidth: printConfig.padWidth, prefix: printConfig.prefix, suffix: printConfig.suffix,
