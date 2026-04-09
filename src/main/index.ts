@@ -1,5 +1,6 @@
 import { app, BrowserWindow, shell, Menu, ipcMain } from 'electron'
 import { join } from 'path'
+import { existsSync } from 'fs'
 import log from 'electron-log'
 import { registerTemplateHandlers } from './ipc/templateHandlers'
 import { registerPrintHandlers } from './ipc/printHandlers'
@@ -70,6 +71,12 @@ function buildMenu(win: BrowserWindow) {
 }
 
 function createWindow(): void {
+  const devIconPath = join(app.getAppPath(), 'resources', 'icon.ico')
+  const packagedIconPath = join(process.resourcesPath, 'icon.ico')
+  const iconPath = existsSync(devIconPath)
+    ? devIconPath
+    : (existsSync(packagedIconPath) ? packagedIconPath : undefined)
+
   mainWindow = new BrowserWindow({
     width: 1440,
     height: 900,
@@ -77,6 +84,7 @@ function createWindow(): void {
     minHeight: 700,
     show: false,
     title: 'QRLabel',
+    icon: iconPath,
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: false,

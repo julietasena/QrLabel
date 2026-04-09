@@ -17,10 +17,10 @@ export function LabelDesignProps() {
     <div style={panelContainer}>
       <div className="section-title" style={sectionTitleInset}>Etiqueta (bounding box)</div>
       <NumberInput label={`Ancho (${u.label})`} value={u.toDisplay(ld.widthMm)}
-        min={1} step={u.unit === 'px' ? 1 : 0.5}
+        min={1} step={u.unit === 'cm' ? 0.1 : 0.5}
         onChange={v => updateLabelDesignSize(u.fromDisplay(v), ld.heightMm)} />
       <NumberInput label={`Alto (${u.label})`} value={u.toDisplay(ld.heightMm)}
-        min={1} step={u.unit === 'px' ? 1 : 0.5}
+        min={1} step={u.unit === 'cm' ? 0.1 : 0.5}
         onChange={v => updateLabelDesignSize(ld.widthMm, u.fromDisplay(v))} />
 
       <div className="section-title" style={sectionTitleInset}>

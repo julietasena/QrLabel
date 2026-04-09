@@ -118,7 +118,7 @@ export interface PrintProgress {
   confirmedPages: number
   confirmedLabels: number
   status: 'printing' | 'spooled' | 'paused' | 'error' | 'done' | 'cancelled'
-  stage?: 'starting' | 'spooling' | 'waiting_printer_ack' | 'confirmed'
+  stage?: 'starting' | 'spooling' | 'waiting_printer_ack' | 'confirmed' | 'retry'
   errorMessage?: string
 }
 

@@ -120,11 +120,15 @@ export const createTemplateSlice: StateCreator<BoundStore, [], [], TemplateSlice
 
   setTemplate: (t, filename) => {
     clearQrCache()
+    // Backward compatibility: old templates may persist unit="px".
+    // Runtime editing supports only mm/cm, so normalize to mm at load boundary.
+    const normalizedUnit: Unit = t.unit === 'px' ? 'mm' : t.unit
+    const normalizedTemplate = normalizedUnit === t.unit ? t : { ...t, unit: normalizedUnit }
     // Sync previewNumber from lastRecord so the canvas always shows the next expected number.
-    const lastRec = t.printHistory.records[0]
+    const lastRec = normalizedTemplate.printHistory.records[0]
     const syncedTemplate = lastRec
-      ? { ...t, printConfig: { ...t.printConfig, previewNumber: lastRec.end + lastRec.step } }
-      : t
+      ? { ...normalizedTemplate, printConfig: { ...normalizedTemplate.printConfig, previewNumber: lastRec.end + lastRec.step } }
+      : normalizedTemplate
     set({
       template: syncedTemplate,
       isDirty: false,
@@ -132,7 +136,7 @@ export const createTemplateSlice: StateCreator<BoundStore, [], [], TemplateSlice
       selectedIds: [],
       past: [],
       future: [],
-      showGrid: t.grid.visible,
+      showGrid: syncedTemplate.grid.visible,
       labelScrollPos: { x: 0, y: 0 },
       sheetScrollPos: { x: 0, y: 0 },
     })
@@ -142,7 +146,10 @@ export const createTemplateSlice: StateCreator<BoundStore, [], [], TemplateSlice
   setFilename: n => set({ currentFilename: n }),
   updateTemplateName: n => set(s => ({ template: { ...s.template, name: n }, isDirty: true })),
   updatePage: p => set(s => ({ template: { ...s.template, page: p }, isDirty: true })),
-  updateUnit: u => set(s => ({ template: { ...s.template, unit: u }, isDirty: true })),
+  updateUnit: u => set(s => ({
+    template: { ...s.template, unit: u === 'px' ? 'mm' : u },
+    isDirty: true
+  })),
   updateGrid: partial => set(s => ({
     template: produce(s.template, d => { Object.assign(d.grid, partial) }),
     isDirty: true,

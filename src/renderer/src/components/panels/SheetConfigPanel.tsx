@@ -3,6 +3,7 @@ import { panelContainer, sectionTitleInset, fieldGroup } from './panelStyles'
 import { useTemplateStore } from '../../store/templateStore'
 import { useShallow } from 'zustand/react/shallow'
 import { NumberInput } from '../common/NumberInput'
+import { useUnits } from '../../hooks/useUnits'
 import { PAGE_PRESETS } from '../../../../shared/schema'
 import type { PagePreset, Unit, NumberingMode } from '../../../../shared/schema'
 
@@ -15,6 +16,8 @@ export function SheetConfigPanel() {
     updateUnit: s.updateUnit,
     updatePrintConfig: s.updatePrintConfig,
   })))
+  const u = useUnits()
+  const step = u.unit === 'cm' ? 0.1 : 1
 
   return (
     <div style={panelContainer}>
@@ -40,16 +43,16 @@ export function SheetConfigPanel() {
 
       {page.preset === 'custom' && (
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
-          <NumberInput label="Ancho (mm)" value={page.widthMm} min={10}
-            onChange={v => updatePage({ ...page, widthMm: v })} />
-          <NumberInput label="Alto (mm)" value={page.heightMm} min={10}
-            onChange={v => updatePage({ ...page, heightMm: v })} />
+          <NumberInput label={`Ancho (${u.label})`} value={u.toDisplay(page.widthMm)} min={u.toDisplay(10)} step={step}
+            onChange={v => updatePage({ ...page, widthMm: u.fromDisplay(v) })} />
+          <NumberInput label={`Alto (${u.label})`} value={u.toDisplay(page.heightMm)} min={u.toDisplay(10)} step={step}
+            onChange={v => updatePage({ ...page, heightMm: u.fromDisplay(v) })} />
         </div>
       )}
 
       <div style={{ padding: '4px 0', borderTop: '1px solid var(--border)', marginTop: 2 }}>
         <div style={{ fontSize: 11, color: 'var(--text2)', marginBottom: 6 }}>
-          {page.widthMm} × {page.heightMm} mm
+          {u.fmt(page.widthMm)} × {u.fmt(page.heightMm)} {u.label}
         </div>
       </div>
 
@@ -57,7 +60,6 @@ export function SheetConfigPanel() {
       <select value={unit} onChange={e => updateUnit(e.target.value as Unit)}>
         <option value="mm">Milímetros (mm)</option>
         <option value="cm">Centímetros (cm)</option>
-        <option value="px">Píxeles (px)</option>
       </select>
 
       <div className="section-title" style={{ margin: '0 -10px', marginTop: 4 }}>Numeración</div>

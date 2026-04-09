@@ -30,10 +30,10 @@ export function PlacementProps({ placement }: Props) {
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
         <NumberInput label={`X (${u.label})`} value={u.toDisplay(placement.xMm)}
-          step={u.unit === 'px' ? 1 : 0.1} onFocus={onFocusField}
+          step={u.unit === 'cm' ? 0.01 : 0.1} onFocus={onFocusField}
           onChange={v => upd({ xMm: u.fromDisplay(v) })} />
         <NumberInput label={`Y (${u.label})`} value={u.toDisplay(placement.yMm)}
-          step={u.unit === 'px' ? 1 : 0.1} onFocus={onFocusField}
+          step={u.unit === 'cm' ? 0.01 : 0.1} onFocus={onFocusField}
           onChange={v => upd({ yMm: u.fromDisplay(v) })} />
       </div>
       <NumberInput label="Rotación (°)" value={placement.rotationDeg}

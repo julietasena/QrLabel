@@ -28,15 +28,15 @@ export function QrBlockProps({ block }: Props) {
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
         <NumberInput label={`X (${u.label})`} value={u.toDisplay(block.xMm)}
-          step={u.unit === 'px' ? 1 : 0.1} onFocus={onFocusField}
+          step={u.unit === 'cm' ? 0.01 : 0.1} onFocus={onFocusField}
           onChange={v => upd({ xMm: u.fromDisplay(v) })} />
         <NumberInput label={`Y (${u.label})`} value={u.toDisplay(block.yMm)}
-          step={u.unit === 'px' ? 1 : 0.1} onFocus={onFocusField}
+          step={u.unit === 'cm' ? 0.01 : 0.1} onFocus={onFocusField}
           onChange={v => upd({ yMm: u.fromDisplay(v) })} />
       </div>
 
       <NumberInput label={`Tamaño (${u.label})`} value={u.toDisplay(block.sizeMm)}
-        min={u.unit === 'px' ? 20 : 5} step={u.unit === 'px' ? 1 : 0.5} onFocus={onFocusField}
+        min={u.unit === 'cm' ? 0.5 : 5} step={u.unit === 'cm' ? 0.1 : 0.5} onFocus={onFocusField}
         onChange={v => upd({ sizeMm: Math.max(1, u.fromDisplay(v)) })} />
 
       <NumberInput label="Rotación (°)" value={block.rotationDeg}
