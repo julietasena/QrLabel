@@ -57,6 +57,8 @@ function contentBoundsAfterRotation(
   }
 }
 
+const TRANSFORMER_ANCHORS = ['top-left', 'top-right', 'bottom-left', 'bottom-right']
+
 // ── QrBlock Node ──────────────────────────────────────────────────────────────
 interface QrBlockNodeProps {
   block: QrBlock
@@ -167,20 +169,17 @@ function QrBlockNode({
         }}
         onTransformEnd={e => {
           const n = e.target as Konva.Group
-          const rawSz = Math.max(5, block.sizeMm * n.scaleX())
-          // Reserve space for text (above or below) so it never overflows the label.
-          // textActualH is measured from the last render, accurate for both single and multi-line.
-          const textHMm = block.showText ? block.textOffsetMm + konvaToMm(textActualH, zoom) : 0
-          const clampedSz = Math.min(rawSz, labelWMm, Math.max(1, labelHMm - textHMm))
-          // Scale fontSize proportionally, clamped to a readable minimum
-          const scale = clampedSz / block.sizeMm
-          const newFontSize = Math.max(4, Math.round(block.fontSize * scale * 10) / 10)
+          // boundBoxFunc already ensured the scale is within label limits.
+          // Use scaleX directly — clamp to [1mm, max] as a safety net only.
+          const scale = n.scaleX()
+          const clampedSz = Math.max(1, block.sizeMm * scale)
           const rotDeg = snapDeg(((n.rotation() % 360) + 360) % 360) % 360
+          const newFontSize = Math.max(4, Math.round(block.fontSize * (clampedSz / block.sizeMm) * 10) / 10)
+          // Final position safety net: clamp using measured text height so the
+          // entire rotated footprint stays within the label.
           const newSp = toK(clampedSz)
-          const tW = !block.wrapText && textRef.current ? textRef.current.getTextWidth() : newSp
+          const tW = !block.wrapText && textRef.current ? textRef.current.getTextWidth() * scale : newSp
           const newTextX = block.wrapText ? 0 : (newSp - tW) / 2
-          // End text height: font and QR scale by the same factor, so line count is preserved.
-          // For single-line recompute from newFontSize; for multi-line scale textActualH directly.
           const endTextH = block.showText
             ? (block.wrapText ? textActualH * scale : Math.max(6, newFontSize * zoom * 1.333))
             : fp
@@ -191,7 +190,7 @@ function QrBlockNode({
           const xMm = Math.max(-endCb.minXMm, Math.min(labelWMm - endCb.maxXMm, konvaToMm(n.x(), zoom)))
           const yMm = Math.max(-endCb.minYMm, Math.min(labelHMm - endCb.maxYMm, konvaToMm(n.y(), zoom)))
           n.scaleX(1); n.scaleY(1)
-          trRef.current?.forceUpdate()  // recalculate Transformer bounds immediately after scale reset
+          trRef.current?.forceUpdate()
           onTransformEnd(block.id, clampedSz, rotDeg, xMm, yMm, newFontSize)
           onInteractEnd()
         }}
@@ -222,43 +221,67 @@ function QrBlockNode({
 
       {showTransformer && (
         <Transformer ref={trRef} keepRatio rotateEnabled
-          enabledAnchors={['top-left','top-right','bottom-left','bottom-right']}
+          enabledAnchors={TRANSFORMER_ANCHORS}
           borderStroke="#7c6af7" anchorStroke="#7c6af7" anchorFill="#fff"
           rotateAnchorOffset={24}
           boundBoxFunc={(oldBox, newBox) => {
-            // Enforce label boundaries during live scaling (all rotations, all text modes).
-            //
-            // When scaled by factor k (newBox.width = sp·k), both QR and fontSize scale
-            // proportionally, so:
-            //   content_w(k) = sp·k
-            //   content_h(k) = sp·k + tp + textH·k  =  k·(sp + textH) + tp
-            //   (tp = textOffsetMm in px, fixed; textH scales with font → ×k)
-            //   (same span for text 'above' and 'below' — direction doesn't affect size)
-            //
-            // Axis-aligned bounding box after rotation by θ:
-            //   rotated_w = content_w·c + content_h·s
-            //             = k·(sp·c + (sp+textH)·s) + tp·s  ≤  labelW
-            //   rotated_h = content_w·s + content_h·c
-            //             = k·(sp·s + (sp+textH)·c) + tp·c  ≤  labelH
-            //
-            // Solving for k, then max new sp = sp·k:
-            //   maxSpFromW = sp · (labelW − tp·s) / (sp·(c+s) + textH·s)
-            //   maxSpFromH = sp · (labelH − tp·c) / (sp·(c+s) + textH·c)
+            // ── Detect whether the user is rotating or scaling ──────────────
+            // During rotation Konva sends newBox.rotation !== oldBox.rotation but
+            // newBox.width/height stay equal to oldBox (local pre-rotation dimensions).
+            // During scaling the rotation is fixed and width/height change.
+            // We MUST separate these two paths — mixing them causes the block to
+            // unexpectedly scale while rotating (the classic "broken mouse" bug).
+            const isRotating = Math.abs(newBox.rotation - oldBox.rotation) > 1e-4
+
             const rotRad = newBox.rotation * Math.PI / 180
-            const c = Math.abs(Math.cos(rotRad))
-            const s = Math.abs(Math.sin(rotRad))
-            const tpPx = block.showText ? tp : 0
-            const thPx = block.showText ? textActualH : 0
-            const labelWPx = toK(labelWMm)
-            const labelHPx = toK(labelHMm)
-            const denomW = sp * (c + s) + thPx * s
-            const denomH = sp * (c + s) + thPx * c
-            const maxSpFromW = denomW > 1e-9 ? sp * (labelWPx - tpPx * s) / denomW : labelWPx
-            const maxSpFromH = denomH > 1e-9 ? sp * (labelHPx - tpPx * c) / denomH : labelHPx
-            const minSp = toK(5)
-            const maxSp = Math.max(minSp, Math.min(maxSpFromW, maxSpFromH))
-            if (newBox.width > maxSp || newBox.width < minSp) return oldBox
-            return newBox
+            const cs = Math.abs(Math.cos(rotRad)) + Math.abs(Math.sin(rotRad))
+            const minSpPx = toK(5)
+            const maxSpPx = Math.max(minSpPx, Math.min(toK(labelWMm) / cs, toK(labelHMm) / cs))
+
+            if (isRotating) {
+              // ── ROTATION path ────────────────────────────────────────────
+              // Never touch width/height during rotation. Only reduce the size
+              // if the current QR square no longer fits at the new angle.
+              if (sp <= maxSpPx) return newBox
+              // QR is too big for this angle — scale down proportionally.
+              const factor = maxSpPx / sp
+              const clampedW = oldBox.width * factor
+              const clampedH = oldBox.height * factor
+              return {
+                x:        newBox.x + (newBox.width  - clampedW) * 0.5,
+                y:        newBox.y + (newBox.height - clampedH) * 0.5,
+                width:    clampedW,
+                height:   clampedH,
+                rotation: newBox.rotation,
+              }
+            }
+
+            // ── SCALE path ───────────────────────────────────────────────
+            // Convert QR size limits to group-bbox limits.
+            // oldBox.width is the Transformer local width (QR + possibly wider text),
+            // so we scale limits proportionally: maxGroupW = oldBox.width * maxSpPx / sp
+            const maxGroupW = oldBox.width * maxSpPx / sp
+            const minGroupW = oldBox.width * minSpPx / sp
+            const clampedW = Math.max(minGroupW, Math.min(maxGroupW, newBox.width))
+            if (Math.abs(clampedW - newBox.width) < 0.01) return newBox
+
+            // Preserve the group's aspect ratio (keepRatio=true already enforces this,
+            // but we must mirror it so the returned box is consistent).
+            const ratio = oldBox.height / oldBox.width
+            const clampedH = clampedW * ratio
+            // Keep the fixed corner stationary: compute which fraction of the delta
+            // was the fixed corner's contribution.
+            const dw = newBox.width  - oldBox.width
+            const dh = newBox.height - oldBox.height
+            const fracX = Math.abs(dw) > 0.1 ? -(newBox.x - oldBox.x) / dw : 0.5
+            const fracY = Math.abs(dh) > 0.1 ? -(newBox.y - oldBox.y) / dh : 0.5
+            return {
+              x:        newBox.x + (newBox.width  - clampedW) * fracX,
+              y:        newBox.y + (newBox.height - clampedH) * fracY,
+              width:    clampedW,
+              height:   clampedH,
+              rotation: newBox.rotation,
+            }
           }}
         />
       )}
@@ -269,12 +292,16 @@ function QrBlockNode({
 // ── LabelDesignerCanvas ───────────────────────────────────────────────────────
 export function LabelDesignerCanvas() {
   const {
-    template, zoom, selectedIds,
+    labelDesign, unit, printConfig, snapRotDeg, zoom, selectedIds,
     setSelected, setSelectedIds, toggleSelected,
     updateQrBlock, showRuler,
     labelScrollPos, setLabelScrollPos,
   } = useTemplateStore(useShallow(s => ({
-    template: s.template, zoom: s.zoom, selectedIds: s.selectedIds,
+    labelDesign: s.template.labelDesign,
+    unit: s.template.unit,
+    printConfig: s.template.printConfig,
+    snapRotDeg: s.template.grid.snapRotationDeg,
+    zoom: s.zoom, selectedIds: s.selectedIds,
     setSelected: s.setSelected, setSelectedIds: s.setSelectedIds,
     toggleSelected: s.toggleSelected,
     updateQrBlock: s.updateQrBlock, showRuler: s.showRuler,
@@ -347,7 +374,6 @@ export function LabelDesignerCanvas() {
   const selBoxRef     = useRef(selBox)
   const isRubberBanding = useRef(false)
 
-  const { labelDesign, unit, printConfig } = template
   const payload = previewPayloadFromConfig(printConfig)
   const toK = useCallback((mm: number) => mmToKonva(mm, zoom), [zoom])
 
@@ -363,7 +389,6 @@ export function LabelDesignerCanvas() {
   const rulerOriginX = contentX - scroll.x + rl
   const rulerOriginY = contentY - scroll.y + rl
 
-  const snapRotDeg = template.grid.snapRotationDeg
   const snapDeg = (deg: number) => snapRotDeg ? Math.round(deg / snapRotDeg) * snapRotDeg : deg
 
   useEffect(() => {

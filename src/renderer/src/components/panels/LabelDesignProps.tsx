@@ -6,13 +6,12 @@ import { NumberInput } from '../common/NumberInput'
 import { useUnits } from '../../hooks/useUnits'
 
 export function LabelDesignProps() {
-  const { template, updateLabelDesignSize, addQrBlock } = useTemplateStore(useShallow(s => ({
-    template: s.template,
+  const { labelDesign: ld, updateLabelDesignSize, addQrBlock } = useTemplateStore(useShallow(s => ({
+    labelDesign: s.template.labelDesign,
     updateLabelDesignSize: s.updateLabelDesignSize,
-    addQrBlock: s.addQrBlock
+    addQrBlock: s.addQrBlock,
   })))
   const u = useUnits()
-  const ld = template.labelDesign
 
   return (
     <div style={panelContainer}>

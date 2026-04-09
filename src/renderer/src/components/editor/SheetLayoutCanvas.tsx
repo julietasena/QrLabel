@@ -224,11 +224,18 @@ function PlacementNode({
 // ── SheetLayoutCanvas ──────────────────────────────────────────────────────────
 export function SheetLayoutCanvas() {
   const {
-    template, zoom, selectedIds, setSelected, toggleSelected,
+    placements, labelDesign, page, printConfig, unit, snapRotDeg,
+    zoom, selectedIds, setSelected, toggleSelected,
     setSelectedIds, updatePlacement, showRuler,
     sheetScrollPos, setSheetScrollPos,
   } = useTemplateStore(useShallow(s => ({
-    template: s.template, zoom: s.zoom, selectedIds: s.selectedIds,
+    placements: s.template.placements,
+    labelDesign: s.template.labelDesign,
+    page: s.template.page,
+    printConfig: s.template.printConfig,
+    unit: s.template.unit,
+    snapRotDeg: s.template.grid.snapRotationDeg,
+    zoom: s.zoom, selectedIds: s.selectedIds,
     setSelected: s.setSelected, toggleSelected: s.toggleSelected,
     setSelectedIds: s.setSelectedIds, updatePlacement: s.updatePlacement,
     showRuler: s.showRuler,
@@ -300,7 +307,6 @@ export function SheetLayoutCanvas() {
   const selBoxRef       = useRef(selBox)
   const isRubberBanding = useRef(false)
 
-  const { labelDesign, page, placements, printConfig, unit } = template
   const toK = useCallback((mm: number) => mmToKonva(mm, zoom), [zoom])
 
   const contentW = toK(page.widthMm)
@@ -315,7 +321,6 @@ export function SheetLayoutCanvas() {
   const rulerOriginX = contentX - scroll.x + rl
   const rulerOriginY = contentY - scroll.y + rl
 
-  const snapRotDeg = template.grid.snapRotationDeg
   const snapDeg = (deg: number) => snapRotDeg ? Math.round(deg / snapRotDeg) * snapRotDeg : deg
 
   useEffect(() => {
@@ -343,7 +348,7 @@ export function SheetLayoutCanvas() {
   // Explicitly redraw when labelDesign changes (e.g. after editing in label mode)
   useEffect(() => {
     contentLayerRef.current?.batchDraw()
-  }, [template.labelDesign])
+  }, [labelDesign])
 
   useEffect(() => {
     const h = (e: KeyboardEvent) => {

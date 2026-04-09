@@ -81,7 +81,8 @@ function ModeBtn({ label, icon: Icon, active, onClick }: { label: string; icon: 
 
 export function MainToolbar({ onSave, onOpenPrint }: { onSave: () => void; onOpenPrint: () => void }) {
   const s = useTemplateStore(useShallow(s => ({
-    template:     s.template,
+    templateName: s.template.name,
+    lastPrint:    s.template.printHistory.records[0] ?? null,
     mode:         s.mode,
     zoom:         s.zoom,
     isDirty:      s.isDirty,
@@ -99,9 +100,8 @@ export function MainToolbar({ onSave, onOpenPrint }: { onSave: () => void; onOpe
     toggleRuler:  s.toggleRuler,
   })))
 
-  const lastPrint = s.template.printHistory.records[0] ?? null
-  const lastLabel = lastPrint
-    ? `${formatPayload(lastPrint.start, lastPrint)} → ${formatPayload(lastPrint.end, lastPrint)}`
+  const lastLabel = s.lastPrint
+    ? `${formatPayload(s.lastPrint.start, s.lastPrint)} → ${formatPayload(s.lastPrint.end, s.lastPrint)}`
     : null
 
   const [zoomHov, setZoomHov] = React.useState(false)
@@ -119,7 +119,7 @@ export function MainToolbar({ onSave, onOpenPrint }: { onSave: () => void; onOpe
         maxWidth: 130, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
         flexShrink: 0, paddingRight: 6,
       }}>
-        {s.template.name}{s.isDirty ? ' ●' : ''}
+        {s.templateName}{s.isDirty ? ' ●' : ''}
       </span>
 
       <Sep />
@@ -182,7 +182,7 @@ export function MainToolbar({ onSave, onOpenPrint }: { onSave: () => void; onOpe
             display: 'flex', alignItems: 'center', gap: 5,
             fontSize: 11, color: 'var(--text3)',
             maxWidth: 230, overflow: 'hidden', flexShrink: 1,
-          }} title={`Última impresión: ${lastLabel} — ${new Date(lastPrint!.printedAt).toLocaleString('es-AR')}`}>
+          }} title={`Última impresión: ${lastLabel} — ${new Date(s.lastPrint!.printedAt).toLocaleString('es-AR')}`}>
             <Clock size={11} color="var(--accent2)" strokeWidth={1.8} style={{ flexShrink: 0 }} />
             <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {lastLabel}

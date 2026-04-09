@@ -7,14 +7,14 @@ import { PAGE_PRESETS } from '../../../../shared/schema'
 import type { PagePreset, Unit, NumberingMode } from '../../../../shared/schema'
 
 export function SheetConfigPanel() {
-  const { template, updatePage, updateUnit, updatePrintConfig } = useTemplateStore(useShallow(s => ({
-    template: s.template,
+  const { page, unit, numberingMode, updatePage, updateUnit, updatePrintConfig } = useTemplateStore(useShallow(s => ({
+    page: s.template.page,
+    unit: s.template.unit,
+    numberingMode: s.template.printConfig.numberingMode,
     updatePage: s.updatePage,
     updateUnit: s.updateUnit,
-    updatePrintConfig: s.updatePrintConfig
+    updatePrintConfig: s.updatePrintConfig,
   })))
-  const { page, unit } = template
-  const numberingMode = template.printConfig.numberingMode
 
   return (
     <div style={panelContainer}>

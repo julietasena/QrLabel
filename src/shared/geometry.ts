@@ -1,5 +1,61 @@
-import type { LabelDesign } from './schema'
+import type { LabelDesign, QrBlock } from './schema'
 import { PT_TO_MM } from './units'
+
+// Maximum QR size (mm) such that the QR square (sp × sp rotated by θ) fits within
+// [0, labelWMm] × [0, labelHMm]. Text is not included — it may extend beyond the label.
+//
+// Rotated QR square occupies sp·(|cosθ|+|sinθ|) per axis, so:
+//   maxSp = min(labelW, labelH) / (|cosθ|+|sinθ|)
+export function maxQrSizeMm(rotationDeg: number, labelWMm: number, labelHMm: number): number {
+  const θ = (rotationDeg * Math.PI) / 180
+  const cs = Math.abs(Math.cos(θ)) + Math.abs(Math.sin(θ))
+  return Math.max(1, Math.min(labelWMm / cs, labelHMm / cs))
+}
+
+// Computes the valid range for block.xMm / block.yMm so that the entire
+// rotated content (QR image + text) stays within [0, labelWMm] × [0, labelHMm].
+//
+// The block's Group origin is its top-left corner (rotation pivot).
+// Text height is approximated as fontSize × PT_TO_MM × 1.333 (Konva line-height).
+// For single-line text the approximation is exact; for wrapText the actual height
+// may be larger (more lines), making these bounds slightly loose — that is safe
+// because the canvas's own onTransformEnd uses measured text height and applies
+// tighter clamping before calling updateQrBlock.
+export function qrBlockValidBounds(
+  b: QrBlock, labelWMm: number, labelHMm: number
+): { minXMm: number; maxXMm: number; minYMm: number; maxYMm: number } {
+  const sp = b.sizeMm
+  const textHMm = b.showText ? b.textOffsetMm + b.fontSize * PT_TO_MM * 1.333 : 0
+
+  // Content box in Group-local mm, unrotated (origin = top-left of QR image)
+  const cMinX = 0, cMaxX = sp
+  const cMinY = b.showText && b.textPosition === 'above' ? -textHMm : 0
+  const cMaxY = b.showText && b.textPosition === 'below' ? sp + textHMm : sp
+
+  // Rotate all four corners of the content box around origin
+  const θ = (b.rotationDeg * Math.PI) / 180
+  const c = Math.cos(θ), s = Math.sin(θ)
+  const rot = (x: number, y: number) => [x * c - y * s, x * s + y * c] as const
+  const corners = [
+    rot(cMinX, cMinY), rot(cMaxX, cMinY),
+    rot(cMinX, cMaxY), rot(cMaxX, cMaxY),
+  ]
+
+  // Axis-aligned bounding box of the rotated content (relative to the block origin)
+  const rotMinX = Math.min(...corners.map(([x]) => x))
+  const rotMaxX = Math.max(...corners.map(([x]) => x))
+  const rotMinY = Math.min(...corners.map(([, y]) => y))
+  const rotMaxY = Math.max(...corners.map(([, y]) => y))
+
+  // Valid range for the block origin so the whole rotated content stays in label bounds.
+  // If the rotated content is larger than the label on an axis, clamp to the left/top edge.
+  const minXMm = -rotMinX
+  const maxXMm = Math.max(minXMm, labelWMm - rotMaxX)
+  const minYMm = -rotMinY
+  const maxYMm = Math.max(minYMm, labelHMm - rotMaxY)
+
+  return { minXMm, maxXMm, minYMm, maxYMm }
+}
 
 // Estimate how far text extends beyond the label's top and bottom edges (mm).
 // Used to tighten placement bounds so text stays within the page.

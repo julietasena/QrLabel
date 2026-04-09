@@ -8,16 +8,19 @@ import { PrintConfigPanel } from './PrintConfigPanel'
 import { SheetConfigPanel } from './SheetConfigPanel'
 
 export function PropertiesPanel() {
-  const { mode, selectedIds, template } = useTemplateStore(useShallow(s => ({
-    mode: s.mode, selectedIds: s.selectedIds, template: s.template
+  const { mode, selectedIds, qrBlocks, placements } = useTemplateStore(useShallow(s => ({
+    mode: s.mode,
+    selectedIds: s.selectedIds,
+    qrBlocks: s.template.labelDesign.qrBlocks,
+    placements: s.template.placements,
   })))
   const selectedId = selectedIds[0] ?? null
 
   const selectedQrBlock = mode === 'label'
-    ? template.labelDesign.qrBlocks.find(b => b.id === selectedId) ?? null
+    ? qrBlocks.find(b => b.id === selectedId) ?? null
     : null
   const selectedPlacement = mode === 'sheet'
-    ? template.placements.find(p => p.id === selectedId) ?? null
+    ? placements.find(p => p.id === selectedId) ?? null
     : null
 
   return (

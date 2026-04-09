@@ -4,8 +4,7 @@ import { v4 as uuidv4 } from 'uuid'
 import type { Template, LabelDesign, QrBlock, Placement, Unit, Grid, Page, PrintConfig } from '../../../shared/schema'
 import { createDefaultTemplate } from '../../../shared/schema'
 import { clearQrCache } from '../../../shared/qr'
-import { PT_TO_MM } from '../../../shared/units'
-import { textOverhang } from '../../../shared/geometry'
+import { textOverhang, qrBlockValidBounds, maxQrSizeMm } from '../../../shared/geometry'
 
 // Module-level clipboard — excluded from undo snapshots intentionally
 let clipboard:
@@ -241,13 +240,15 @@ export const createTemplateSlice: StateCreator<BoundStore, [], [], TemplateSlice
         const b = d.labelDesign.qrBlocks.find(x => x.id === id)
         if (!b) return
         Object.assign(b, changes)
-        // Clamp size first, then position — ensures block fits within label.
-        const textHMm = b.showText ? b.textOffsetMm + b.fontSize * PT_TO_MM * 1.2 : 0
-        b.sizeMm = Math.max(1, Math.min(b.sizeMm, ld.widthMm, Math.max(1, ld.heightMm - textHMm)))
-        b.xMm    = Math.max(0, Math.min(ld.widthMm - b.sizeMm, b.xMm))
-        b.yMm = b.showText && b.textPosition === 'above'
-          ? Math.max(textHMm, Math.min(ld.heightMm - b.sizeMm, b.yMm))
-          : Math.max(0, Math.min(ld.heightMm - b.sizeMm - textHMm, b.yMm))
+        // Clamp size using the rotation-aware max: a rotated QR occupies
+        // sizeMm·(|cosθ|+|sinθ|) on each axis, so the axis-aligned max is wrong.
+        b.sizeMm = Math.max(1, Math.min(b.sizeMm, maxQrSizeMm(b.rotationDeg, ld.widthMm, ld.heightMm)))
+        // Clamp position using rotation-aware bounds so the whole rotated
+        // footprint (QR + text) stays within the label. Fixes position jumps
+        // when rotation changes via drag or manual panel input.
+        const rb = qrBlockValidBounds(b, ld.widthMm, ld.heightMm)
+        b.xMm = Math.max(rb.minXMm, Math.min(rb.maxXMm, b.xMm))
+        b.yMm = Math.max(rb.minYMm, Math.min(rb.maxYMm, b.yMm))
       }),
       isDirty: true
     })
@@ -445,8 +446,10 @@ export const createTemplateSlice: StateCreator<BoundStore, [], [], TemplateSlice
         for (const { id, xMm, yMm } of updates) {
           const b = d.labelDesign.qrBlocks.find(x => x.id === id)
           if (!b) continue
-          b.xMm = Math.max(0, Math.min(ld.widthMm  - b.sizeMm, xMm))
-          b.yMm = Math.max(0, Math.min(ld.heightMm - b.sizeMm, yMm))
+          // Use rotation-aware bounds so rotated blocks clamp correctly
+          const rb = qrBlockValidBounds(b, ld.widthMm, ld.heightMm)
+          b.xMm = Math.max(rb.minXMm, Math.min(rb.maxXMm, xMm))
+          b.yMm = Math.max(rb.minYMm, Math.min(rb.maxYMm, yMm))
         }
       }),
       isDirty: true

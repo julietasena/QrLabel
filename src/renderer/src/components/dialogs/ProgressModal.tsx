@@ -18,7 +18,7 @@ export function ProgressModal({ onClose }: Props) {
   const watchdogRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   useEffect(() => {
     if (watchdogRef.current) clearTimeout(watchdogRef.current)
-    if (progress.status === 'printing') {
+    if (progress.status === 'printing' || progress.status === 'spooled') {
       watchdogRef.current = setTimeout(() => {
         setProgress(p => ({
           ...p,
@@ -37,6 +37,7 @@ export function ProgressModal({ onClose }: Props) {
   const err = status === 'error'
   const paused = status === 'paused'
   const printing = status === 'printing'
+  const spooled = status === 'spooled'
   const finished = done || cancelled
 
   async function handlePause() { await window.electronAPI.pausePrint() }
@@ -48,9 +49,10 @@ export function ProgressModal({ onClose }: Props) {
       <div className="modal" style={{ minWidth: 440 }}>
         <h2 style={{ marginBottom: 16 }}>
           {printing && '🖨 Imprimiendo...'}
+          {spooled && '🖨 Aguardando impresora...'}
           {paused && '⏸ En pausa'}
           {err && '⚠ Error de impresión'}
-          {done && '✅ Completado'}
+          {done && '✅ Impresión completada'}
           {cancelled && '❌ Cancelado'}
         </h2>
 
@@ -68,6 +70,13 @@ export function ProgressModal({ onClose }: Props) {
             }} />
           </div>
         </div>
+
+        {/* Spooled note */}
+        {spooled && (
+          <p style={{ fontSize: 11, color: 'var(--text2)', marginBottom: 12 }}>
+            Trabajo enviado a la cola. Aguardando confirmación de la impresora...
+          </p>
+        )}
 
         {/* Current label */}
         {progress.currentLabel && (
@@ -101,10 +110,10 @@ export function ProgressModal({ onClose }: Props) {
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
           {finished && <button className="btn-primary" onClick={() => onClose(progress)}>Cerrar</button>}
 
-          {(printing || paused || err) && (
+          {(printing || spooled || paused || err) && (
             <button className="btn-danger" onClick={handleCancel}>Cancelar</button>
           )}
-          {printing && !err && (
+          {(printing || spooled) && !err && (
             <button className="btn-secondary" onClick={handlePause}>⏸ Pausar</button>
           )}
           {(paused || err) && (

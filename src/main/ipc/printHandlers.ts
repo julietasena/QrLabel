@@ -1,3 +1,4 @@
+import { exec } from 'child_process'
 import { ipcMain, BrowserWindow } from 'electron'
 import log from 'electron-log'
 import type { PrintJobConfig, PrintProgress } from '../../shared/schema'
@@ -5,7 +6,7 @@ import { renderPageHtml } from '../print/pageRenderer'
 import { formatPayload, computePageCount } from '../../shared/numberFormat'
 import { MM_TO_PX_BASE as PX_PER_MM } from '../../shared/units'
 
-type PrintStatus = 'idle' | 'printing' | 'paused' | 'error' | 'done' | 'cancelled'
+type PrintStatus = 'idle' | 'printing' | 'spooled' | 'paused' | 'error' | 'done' | 'cancelled'
 
 interface PrintState {
   status: PrintStatus
@@ -22,13 +23,12 @@ let state: PrintState = {
   currentLabel: '', currentNumber: 0, cancelFlag: false
 }
 
-// Always send current full state to keep renderer in sync
 function send(win: BrowserWindow, extra: Partial<PrintProgress> = {}) {
   if (win.isDestroyed()) return
   const p: PrintProgress = {
-    currentPage:  state.currentPage,
-    totalPages:   state.totalPages,
-    currentLabel: state.currentLabel,
+    currentPage:   state.currentPage,
+    totalPages:    state.totalPages,
+    currentLabel:  state.currentLabel,
     currentNumber: state.currentNumber,
     status: state.status as PrintProgress['status'],
     ...extra
@@ -37,7 +37,6 @@ function send(win: BrowserWindow, extra: Partial<PrintProgress> = {}) {
 }
 
 function waitResume(): Promise<boolean> {
-  // If cancel/resume already fired before we entered, resolve immediately
   if (state.cancelFlag) return Promise.resolve(false)
   if (state.status !== 'paused') return Promise.resolve(true)
   return new Promise(resolve => {
@@ -63,10 +62,184 @@ async function loadHtml(win: BrowserWindow, html: string): Promise<void> {
   })
 }
 
-async function printOnePage(
-  html: string, printerName: string,
-  pageWidthMm: number, pageHeightMm: number
+// ── Windows print queue monitoring ────────────────────────────────────────────
+//
+// Strategy: track the specific job ID submitted by webContents.print().
+//
+// The Windows Print Spooler calls the print callback with success=true as soon
+// as it accepts the job — NOT when paper exits the printer. On hardware errors
+// (no paper, offline, jam) the spooler may accept the call but discard the job
+// before it appears in the queue. "Empty queue" alone is therefore ambiguous.
+//
+// Fix:
+//   Phase 1 — snapshot queue IDs BEFORE submit, then wait for a NEW job to
+//              appear (up to 10s). If none appears, check printer hardware status
+//              for a descriptive error.
+//   Phase 2 — monitor THAT specific job ID until it leaves the queue (success)
+//              or shows an error flag / the printer enters an error state.
+
+interface PrintJob {
+  id: number
+  status: string
+}
+
+interface PrinterStatus {
+  isError: boolean
+  message: string
+}
+
+function getPrintJobs(printerName: string): Promise<PrintJob[]> {
+  return new Promise(resolve => {
+    const safeName = printerName.replace(/'/g, "''")
+    const cmd =
+      `powershell -NoProfile -NonInteractive -Command "` +
+      `try { $j = Get-PrintJob -PrinterName '${safeName}' -ErrorAction Stop; ` +
+      `if ($j) { $j | Select-Object Id,JobStatus | ConvertTo-Json -Compress } ` +
+      `else { '[]' } } catch { '[]' }"`
+    exec(cmd, { timeout: 8000 }, (err, stdout) => {
+      const out = (stdout ?? '').trim()
+      if (err || !out || out === '[]') { resolve([]); return }
+      try {
+        const raw = JSON.parse(out)
+        const arr = Array.isArray(raw) ? raw : [raw]
+        resolve(arr.map(j => ({ id: Number(j.Id ?? 0), status: String(j.JobStatus ?? '') })))
+      } catch { resolve([]) }
+    })
+  })
+}
+
+function getPrinterStatus(printerName: string): Promise<PrinterStatus> {
+  return new Promise(resolve => {
+    const safeName = printerName.replace(/'/g, "''")
+    const cmd =
+      `powershell -NoProfile -NonInteractive -Command "` +
+      `try { $p = Get-Printer -Name '${safeName}' -ErrorAction Stop; ` +
+      `$p | Select-Object PrinterStatus | ConvertTo-Json -Compress } ` +
+      `catch { '{}' }"`
+    exec(cmd, { timeout: 8000 }, (err, stdout) => {
+      const out = (stdout ?? '').trim()
+      if (err || !out || out === '{}') { resolve({ isError: false, message: '' }); return }
+      try {
+        const p = JSON.parse(out)
+        const st = Number(p.PrinterStatus ?? 0)
+        // WMI PrinterStatus: 3=Idle, 4=Printing, 5=WarmingUp — all others indicate a problem
+        const STATUS_ERRORS: Record<number, string> = {
+          1:  'La impresora está en pausa',
+          2:  'Error en la impresora',
+          6:  'Sin papel en la impresora',
+          7:  'Problema con el papel',
+          8:  'Impresora desconectada (offline)',
+          9:  'Impresora desconectada (offline)',
+          11: 'Atasco de papel',
+          12: 'La impresora requiere intervención del usuario',
+        }
+        if (STATUS_ERRORS[st]) resolve({ isError: true, message: STATUS_ERRORS[st] })
+        else resolve({ isError: false, message: '' })
+      } catch { resolve({ isError: false, message: '' }) }
+    })
+  })
+}
+
+async function getQueueSnapshot(printerName: string): Promise<Set<number>> {
+  try {
+    const jobs = await getPrintJobs(printerName)
+    return new Set(jobs.map(j => j.id))
+  } catch {
+    return new Set()
+  }
+}
+
+const ERROR_KEYWORDS: Record<string, string> = {
+  'out of paper':      'Sin papel en la impresora',
+  'paper out':         'Sin papel en la impresora',
+  'paper problem':     'Problema con el papel',
+  'jammed':            'Atasco de papel',
+  'jam':               'Atasco de papel',
+  'offline':           'Impresora desconectada (offline)',
+  'user intervention': 'La impresora requiere intervención del usuario',
+  'blocked':           'Trabajo bloqueado por la impresora',
+  'error':             'Error en la impresora',
+}
+
+async function waitForJobCompletion(
+  printerName: string,
+  preSnapshot: Set<number>,   // job IDs in the queue BEFORE webContents.print() was called
+  timeoutMs = 120_000
 ): Promise<void> {
+  const deadline = Date.now() + timeoutMs
+
+  // ── Phase 1: wait for our specific job to appear in the queue ─────────────
+  // If the printer has an error (no paper, offline…), the spooler may accept
+  // the submit call but discard the job immediately, so it never appears.
+  // We poll for up to 10 s looking for a job ID that wasn't there before.
+  let ourJobId: number | null = null
+  const phase1Deadline = Date.now() + 10_000
+  while (Date.now() < phase1Deadline) {
+    await new Promise(r => setTimeout(r, 600))
+    let jobs: PrintJob[]
+    try { jobs = await getPrintJobs(printerName) }
+    catch { break }  // PowerShell unavailable — skip monitoring
+
+    const newJob = jobs.find(j => !preSnapshot.has(j.id))
+    if (newJob) {
+      ourJobId = newJob.id
+      log.info(`  Job ID ${ourJobId} detected in queue`)
+      break
+    }
+  }
+
+  if (ourJobId === null) {
+    // No job appeared — either the printer discarded it immediately (error)
+    // or it completed so fast it was already gone before our first poll
+    // (virtual printers, fast local printers).
+    const printerSt = await getPrinterStatus(printerName)
+    if (printerSt.isError) throw new Error(printerSt.message)
+    log.info('  No job appeared in queue — assuming fast completion or virtual printer')
+    return
+  }
+
+  // ── Phase 2: monitor our job until it leaves the queue ────────────────────
+  while (Date.now() < deadline) {
+    await new Promise(r => setTimeout(r, 1500))
+    let jobs: PrintJob[]
+    try { jobs = await getPrintJobs(printerName) }
+    catch {
+      log.warn('waitForJobCompletion: PowerShell query failed, skipping job monitoring')
+      return
+    }
+
+    const ourJob = jobs.find(j => j.id === ourJobId)
+    if (!ourJob) {
+      log.info(`  Job ID ${ourJobId} left the queue — print confirmed`)
+      return  // job completed successfully
+    }
+
+    // Check job-level error flags
+    const jobSt = ourJob.status.toLowerCase()
+    for (const [keyword, message] of Object.entries(ERROR_KEYWORDS)) {
+      if (jobSt.includes(keyword)) throw new Error(message)
+    }
+
+    // Also check hardware-level printer status (catches errors not reflected in job status)
+    const printerSt = await getPrinterStatus(printerName)
+    if (printerSt.isError) throw new Error(printerSt.message)
+  }
+
+  throw new Error('Tiempo de espera agotado: la impresora no confirmó la impresión en 2 minutos')
+}
+
+// ── Single-page print ─────────────────────────────────────────────────────────
+
+async function printOnePage(
+  html: string,
+  printerName: string,
+  pageWidthMm: number,
+  pageHeightMm: number,
+  onSpooled?: () => void
+): Promise<void> {
+  // Snapshot queue BEFORE submitting so Phase 1 can identify our new job
+  const preSnapshot = await getQueueSnapshot(printerName)
+
   const win = new BrowserWindow({
     show: false,
     width:  Math.ceil(pageWidthMm  * PX_PER_MM) + 100,
@@ -79,6 +252,8 @@ async function printOnePage(
   try {
     await loadHtml(win, html)
     await new Promise(r => setTimeout(r, 600))
+
+    // Submit to Windows Print Spooler
     await new Promise<void>((resolve, reject) => {
       win.webContents.print(
         {
@@ -90,27 +265,33 @@ async function printOnePage(
           }
         } as Electron.WebContentsPrintOptions,
         (success, errorType) => {
-          log.info(`Print result: success=${success} error="${errorType}"`)
+          log.info(`Spooler result: success=${success} error="${errorType}"`)
           if (success) resolve()
           else reject(new Error(errorType || 'unknown driver error'))
         }
       )
     })
+
+    onSpooled?.()
   } finally {
     if (!win.isDestroyed()) win.destroy()
   }
+
+  // Wait for physical completion — runs OUTSIDE try/finally (window already destroyed)
+  log.info(`  Monitoring job on "${printerName}"...`)
+  await waitForJobCompletion(printerName, preSnapshot)
 }
 
 export function registerPrintHandlers(mainWin: BrowserWindow): void {
 
   ipcMain.handle('print:start', async (_, config: PrintJobConfig) => {
-    if (state.status === 'printing' || state.status === 'paused')
+    if (state.status === 'printing' || state.status === 'paused' || state.status === 'spooled')
       return { ok: false, error: 'Ya hay un trabajo en curso' }
 
     const { labelDesign, placements, page, printConfig, printerName, start, end } = config
     const { padWidth, prefix, suffix, step, numberingMode } = printConfig
 
-    if (!placements.length)       return { ok: false, error: 'Sin placements en la hoja' }
+    if (!placements.length)           return { ok: false, error: 'Sin placements en la hoja' }
     if (!labelDesign.qrBlocks.length) return { ok: false, error: 'La etiqueta no tiene QR blocks' }
 
     const numbers: number[] = []
@@ -155,6 +336,7 @@ export function registerPrintHandlers(mainWin: BrowserWindow): void {
           state.currentNumber = baseNumber
 
           log.info(`Page ${state.currentPage}/${totalPages}: ${payloads[0]} → ${payloads[payloads.length-1]}`)
+          state.status = 'printing'
           send(mainWin)
 
           let lastErr: Error | null = null
@@ -164,7 +346,10 @@ export function registerPrintHandlers(mainWin: BrowserWindow): void {
                 pageWidthMm: page.widthMm, pageHeightMm: page.heightMm,
                 labelDesign, placements: pagePlacements, payloads
               })
-              await printOnePage(html, printerName, page.widthMm, page.heightMm)
+              await printOnePage(html, printerName, page.widthMm, page.heightMm, () => {
+                state.status = 'spooled'
+                send(mainWin)
+              })
               lastErr = null
               log.info(`  Page ${state.currentPage} OK`)
               break
@@ -182,7 +367,7 @@ export function registerPrintHandlers(mainWin: BrowserWindow): void {
             if (!cont) break
             state.status = 'printing'
             send(mainWin)
-            pi--
+            pi--  // retry same page
           }
         }
 
@@ -200,23 +385,20 @@ export function registerPrintHandlers(mainWin: BrowserWindow): void {
     return { ok: true }
   })
 
-  // ── pause: sets state AND notifies renderer immediately ──────────────────
   ipcMain.handle('print:pause', () => {
-    if (state.status === 'printing') {
+    if (state.status === 'printing' || state.status === 'spooled') {
       state.status = 'paused'
       log.info('Paused')
-      send(mainWin)   // ← this was missing — renderer now gets 'paused' status
+      send(mainWin)
     }
     return { ok: true }
   })
 
-  // ── resume: resolves the wait and notifies renderer ──────────────────────
   ipcMain.handle('print:resume', () => {
     if (state.status === 'paused') {
       state.resolveResume?.()
       state.resolveResume = undefined
       log.info('Resumed')
-      // The loop will update status to 'printing' and call send() itself
     }
     return { ok: true }
   })

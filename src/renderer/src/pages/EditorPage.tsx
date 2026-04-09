@@ -208,17 +208,21 @@ export function EditorPage({ onBack }: Props) {
 }
 
 function StatusBar() {
-  const { template, zoom, mode, selectedIds } = useTemplateStore(useShallow(s => ({
-    template: s.template, zoom: s.zoom, mode: s.mode, selectedIds: s.selectedIds
+  const { qrBlocks, placements, page, unit, zoom, mode, selectedIds } = useTemplateStore(useShallow(s => ({
+    qrBlocks: s.template.labelDesign.qrBlocks,
+    placements: s.template.placements,
+    page: s.template.page,
+    unit: s.template.unit,
+    zoom: s.zoom, mode: s.mode, selectedIds: s.selectedIds,
   })))
   return (
     <div style={{ height: 22, background: 'var(--bg2)', borderTop: '1px solid var(--border)', display: 'flex', alignItems: 'center', padding: '0 10px', gap: 14, fontSize: 10, color: 'var(--text3)', flexShrink: 0 }}>
       <span>{mode === 'label' ? '🏷 Etiqueta' : '📄 Hoja'}</span>
       <span>Zoom: {Math.round(zoom * 100)}%</span>
-      <span>{mode === 'label' ? template.labelDesign.qrBlocks.length : template.placements.length} {mode === 'label' ? 'QR blocks' : 'placements'}</span>
+      <span>{mode === 'label' ? qrBlocks.length : placements.length} {mode === 'label' ? 'QR blocks' : 'placements'}</span>
       {selectedIds.length > 1 && <span style={{ color: 'var(--accent)' }}>{selectedIds.length} seleccionados</span>}
-      <span>{template.page.widthMm}×{template.page.heightMm}mm ({template.page.preset})</span>
-      <span>{template.unit}</span>
+      <span>{page.widthMm}×{page.heightMm}mm ({page.preset})</span>
+      <span>{unit}</span>
     </div>
   )
 }

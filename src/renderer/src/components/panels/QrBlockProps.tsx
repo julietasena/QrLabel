@@ -48,7 +48,7 @@ export function QrBlockProps({ block }: Props) {
       <label style={{ flexDirection: 'row', alignItems: 'center', gap: 6, display: 'flex' }}>
         <input type="checkbox" checked={block.showText}
           onChange={e => upd({ showText: e.target.checked })} />
-        Mostrar texto bajo QR
+        Mostrar texto
       </label>
 
       {block.showText && (

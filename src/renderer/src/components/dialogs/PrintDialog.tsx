@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { useTemplateStore } from '../../store/templateStore'
+import { useShallow } from 'zustand/react/shallow'
 import { NumberInput } from '../common/NumberInput'
 import { formatPayload, countLabels, validatePrintRange, computePageCount, computeTotalLabels } from '../../../../shared/numberFormat'
 import { MAX_LABELS } from '../../../../shared/schema'
@@ -11,8 +12,13 @@ interface Props {
 }
 
 export function PrintDialog({ onClose, onStartPrint }: Props) {
-  const template = useTemplateStore(s => s.template)
-  const { printConfig, printHistory, placements, labelDesign } = template
+  const { printConfig, printHistory, placements, labelDesign, page } = useTemplateStore(useShallow(s => ({
+    printConfig: s.template.printConfig,
+    printHistory: s.template.printHistory,
+    placements: s.template.placements,
+    labelDesign: s.template.labelDesign,
+    page: s.template.page,
+  })))
   const lastRecord = printHistory.records[0] ?? null
 
   const [printers, setPrinters] = useState<{ name: string; isDefault: boolean }[]>([])
@@ -54,7 +60,6 @@ export function PrintDialog({ onClose, onStartPrint }: Props) {
     if (noPlacements) { setError('No hay placements en la hoja — andá al Modo Hoja y agregá placements'); return }
     if (noQrBlocks)   { setError('La etiqueta no tiene QR blocks — andá al Modo Etiqueta y agregá uno'); return }
     if (!printerName) { setError('Seleccioná una impresora'); return }
-    const { labelDesign, placements, page, printConfig } = template
     onStartPrint({ labelDesign, placements, page, printConfig, printerName, start, end })
   }
 
