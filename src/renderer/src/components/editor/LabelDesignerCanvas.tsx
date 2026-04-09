@@ -234,9 +234,15 @@ function QrBlockNode({
             const isRotating = Math.abs(newBox.rotation - oldBox.rotation) > 1e-4
 
             const rotRad = newBox.rotation * Math.PI / 180
-            const cs = Math.abs(Math.cos(rotRad)) + Math.abs(Math.sin(rotRad))
+            const cos = Math.abs(Math.cos(rotRad))
+            const sin = Math.abs(Math.sin(rotRad))
             const minSpPx = toK(5)
-            const maxSpPx = Math.max(minSpPx, Math.min(toK(labelWMm) / cs, toK(labelHMm) / cs))
+            // Use the Transformer's actual bounding box (oldBox includes text when present)
+            // to derive the max QR size at this rotation angle.
+            // k = max scale factor such that the full content AABB fits the label.
+            const kMaxX = toK(labelWMm) / (oldBox.width * cos + oldBox.height * sin)
+            const kMaxY = toK(labelHMm) / (oldBox.width * sin + oldBox.height * cos)
+            const maxSpPx = Math.max(minSpPx, sp * Math.min(kMaxX, kMaxY))
 
             if (isRotating) {
               // ── ROTATION path ────────────────────────────────────────────

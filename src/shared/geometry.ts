@@ -1,15 +1,25 @@
 import type { LabelDesign, QrBlock } from './schema'
 import { PT_TO_MM } from './units'
 
-// Maximum QR size (mm) such that the QR square (sp × sp rotated by θ) fits within
-// [0, labelWMm] × [0, labelHMm]. Text is not included — it may extend beyond the label.
+// Maximum QR size (mm) such that the full content (QR + text) fits within
+// [0, labelWMm] × [0, labelHMm].
 //
-// Rotated QR square occupies sp·(|cosθ|+|sinθ|) per axis, so:
-//   maxSp = min(labelW, labelH) / (|cosθ|+|sinθ|)
-export function maxQrSizeMm(rotationDeg: number, labelWMm: number, labelHMm: number): number {
-  const θ = (rotationDeg * Math.PI) / 180
-  const cs = Math.abs(Math.cos(θ)) + Math.abs(Math.sin(θ))
-  return Math.max(1, Math.min(labelWMm / cs, labelHMm / cs))
+// The content is a rectangle (sizeMm wide, sizeMm+textAddMm tall).
+// Its AABB when rotated by θ must fit in the label:
+//   sizeMm·(|cos|+|sin|) + textAddMm·|sin| ≤ labelW
+//   sizeMm·(|cos|+|sin|) + textAddMm·|cos| ≤ labelH
+// Solving for sizeMm:
+//   maxSp = min( (labelW − textAddMm·|sin|) / cs,
+//                (labelH − textAddMm·|cos|) / cs )
+export function maxQrSizeMm(b: QrBlock, labelWMm: number, labelHMm: number): number {
+  const θ = (b.rotationDeg * Math.PI) / 180
+  const cos = Math.abs(Math.cos(θ))
+  const sin = Math.abs(Math.sin(θ))
+  const textAddMm = b.showText ? b.textOffsetMm + b.fontSize * PT_TO_MM * 1.333 : 0
+  const cs = cos + sin
+  const maxW = cs > 0 ? (labelWMm - textAddMm * sin) / cs : labelWMm
+  const maxH = cs > 0 ? (labelHMm - textAddMm * cos) / cs : labelHMm
+  return Math.max(1, Math.min(maxW, maxH))
 }
 
 // Computes the valid range for block.xMm / block.yMm so that the entire
