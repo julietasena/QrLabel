@@ -247,9 +247,16 @@ export const createTemplateSlice: StateCreator<BoundStore, [], [], TemplateSlice
         const b = d.labelDesign.qrBlocks.find(x => x.id === id)
         if (!b) return
         Object.assign(b, changes)
-        // Clamp size using the rotation-aware max: a rotated QR occupies
-        // sizeMm·(|cosθ|+|sinθ|) on each axis, so the axis-aligned max is wrong.
-        b.sizeMm = Math.max(1, Math.min(b.sizeMm, maxQrSizeMm(b, ld.widthMm, ld.heightMm)))
+        // Clamp size. When fontSize is being set in the same update (proportional scale),
+        // clamp it proportionally too — otherwise sizeMm shrinks while fontSize stays large,
+        // making the text visually larger than the QR after the transform.
+        const maxSz = maxQrSizeMm(b, ld.widthMm, ld.heightMm)
+        if (b.sizeMm > maxSz) {
+          if (changes.fontSize !== undefined)
+            b.fontSize = Math.max(4, Math.round(b.fontSize * (maxSz / b.sizeMm) * 10) / 10)
+          b.sizeMm = maxSz
+        }
+        b.sizeMm = Math.max(1, b.sizeMm)
         // Clamp position using rotation-aware bounds so the whole rotated
         // footprint (QR + text) stays within the label. Fixes position jumps
         // when rotation changes via drag or manual panel input.

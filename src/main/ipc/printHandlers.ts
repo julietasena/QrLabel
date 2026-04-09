@@ -87,31 +87,49 @@ async function loadHtml(win: BrowserWindow, html: string): Promise<void> {
 
 interface PrintJob { id: number; status: string }
 interface PrinterStatus { isError: boolean; message: string }
-interface PrintState2 { jobs: PrintJob[]; printer: PrinterStatus }
+interface PrintState2 { jobs: PrintJob[]; printer: PrinterStatus; printerQueried: boolean }
 
-const STATUS_ERRORS: Record<number, string> = {
-  1: 'La impresora está en pausa',
-  2: 'Error en la impresora',
-  6: 'Sin papel en la impresora',
-  7: 'Problema con el papel',
-  8: 'Impresora desconectada (offline)',
-  9: 'Impresora desconectada (offline)',
-  11: 'Atasco de papel',
-  12: 'La impresora requiere intervención del usuario',
-}
+// Win32 PRINTER_INFO_2.Status bitmask constants (winspool.h).
+// PrinterStatus is a bitmask — multiple bits can be set simultaneously.
+// Order matters: more specific errors (offline, jam) take priority over generic (error).
+const PRINTER_STATUS_FLAGS: Array<[number, string]> = [
+  [0x00000080, 'Impresora desconectada (offline)'],         // PRINTER_STATUS_OFFLINE
+  [0x00000008, 'Atasco de papel'],                          // PRINTER_STATUS_PAPER_JAM
+  [0x00000010, 'Sin papel en la impresora'],                // PRINTER_STATUS_PAPER_OUT
+  [0x00000040, 'Problema con el papel'],                    // PRINTER_STATUS_PAPER_PROBLEM
+  [0x00040000, 'Sin tóner en la impresora'],                // PRINTER_STATUS_NO_TONER
+  [0x00100000, 'La impresora requiere intervención del usuario'], // PRINTER_STATUS_USER_INTERVENTION
+  [0x00400000, 'Cubierta de la impresora abierta'],         // PRINTER_STATUS_DOOR_OPEN
+  [0x00000002, 'Error en la impresora'],                    // PRINTER_STATUS_ERROR (generic, check last)
+  [0x00000001, 'La impresora está en pausa'],               // PRINTER_STATUS_PAUSED
+]
 
 function parsePrinterStatus(p: Record<string, unknown> | null | undefined): PrinterStatus {
   if (!p) return { isError: false, message: '' }
+  if (Boolean(p.WorkOffline)) return { isError: true, message: 'Impresora desconectada (offline)' }
+
+  // PrinterStatus: Win32 bitmask — check each flag independently
   const st = Number(p.PrinterStatus ?? 0)
-  const workOffline = Boolean(p.WorkOffline ?? false)
-  const ext = String(p.ExtendedPrinterStatus ?? '').toLowerCase()
-  const printerState = String(p.PrinterState ?? '').toLowerCase()
-  if (workOffline) return { isError: true, message: 'Impresora desconectada (offline)' }
-  if (STATUS_ERRORS[st]) return { isError: true, message: STATUS_ERRORS[st] }
-  if (ext.includes('paper') || ext.includes('jam') || ext.includes('error') || ext.includes('offline'))
-    return { isError: true, message: `Estado impresora: ${ext}` }
-  if (printerState.includes('paper') || printerState.includes('jam') || printerState.includes('error') || printerState.includes('offline'))
-    return { isError: true, message: `Estado impresora: ${printerState}` }
+  for (const [flag, msg] of PRINTER_STATUS_FLAGS) {
+    if ((st & flag) !== 0) return { isError: true, message: msg }
+  }
+
+  // ExtendedPrinterStatus: CIM_Printer enum, serialized as integer by ConvertTo-Json.
+  // String keyword checks don't work on numeric JSON values — use numeric lookup instead.
+  const ext = Number(p.ExtendedPrinterStatus ?? 0)
+  const EXT_ERRORS: Record<number, string> = {
+    6:  'Impresión detenida',
+    7:  'Impresora desconectada (offline)',
+    9:  'Error en la impresora',
+    14: 'Impresora desconectada (offline)',
+    15: 'Sin papel en la impresora',
+    16: 'Sin tóner en la impresora',
+    17: 'Cubierta de la impresora abierta',
+    18: 'Atasco de papel',
+    19: 'La impresora requiere intervención del usuario',
+  }
+  if (EXT_ERRORS[ext]) return { isError: true, message: EXT_ERRORS[ext] }
+
   return { isError: false, message: '' }
 }
 
@@ -123,12 +141,13 @@ function queryPrintState(printerName: string): Promise<PrintState2> {
     const cmd =
       `powershell -NoProfile -NonInteractive -Command "` +
       `$o=@{j=@();p=$null};` +
-      `try{$jj=Get-PrintJob -PrinterName '${n}' -EA Stop;if($jj){$o.j=@($jj|Select-Object Id,JobStatus,Status)}}catch{};` +
+      // Force JobStatus to string so flags enum arrives as "Blocked, Printing" not an integer
+      `try{$jj=Get-PrintJob -PrinterName '${n}' -EA Stop;if($jj){$o.j=@($jj|Select-Object Id,@{N='JobStatus';E={[string]$_.JobStatus}},@{N='Status';E={[string]$_.Status}})}}catch{};` +
       `try{$pp=Get-Printer -Name '${n}' -EA Stop;$o.p=($pp|Select-Object PrinterStatus,WorkOffline,ExtendedPrinterStatus,PrinterState)}catch{};` +
       `$o|ConvertTo-Json -Compress -Depth 3"`
     exec(cmd, { timeout: 12_000 }, (err, stdout) => {
       const out = (stdout ?? '').trim()
-      if (err || !out) { resolve({ jobs: [], printer: { isError: false, message: '' } }); return }
+      if (err || !out) { resolve({ jobs: [], printer: { isError: false, message: '' }, printerQueried: false }); return }
       try {
         const raw = JSON.parse(out)
         const jArr: unknown[] = Array.isArray(raw.j) ? raw.j : (raw.j ? [raw.j] : [])
@@ -141,27 +160,23 @@ function queryPrintState(printerName: string): Promise<PrintState2> {
               status: `${String(jj.JobStatus ?? '')} ${String(jj.Status ?? '')}`.trim()
             }
           })
+        const printerQueried = raw.p !== null && raw.p !== undefined
         const printer = parsePrinterStatus(raw.p as Record<string, unknown> ?? null)
-        resolve({ jobs, printer })
-      } catch { resolve({ jobs: [], printer: { isError: false, message: '' } }) }
+        resolve({ jobs, printer, printerQueried })
+      } catch { resolve({ jobs: [], printer: { isError: false, message: '' }, printerQueried: false }) }
     })
   })
 }
 
-const ERROR_KEYWORDS: string[] = [
-  'out of paper', 'outofpaper', 'paper out', 'paperout', 'sin papel',
-  'paper problem', 'paperproblem', 'jammed', 'jam', 'atasco',
-  'offline', 'desconectada', 'user intervention', 'intervention',
-  'blocked', 'paused', 'pause', 'error',
-]
-
 function mapErrorKeyword(jobStatus: string): string | null {
   const s = jobStatus.toLowerCase()
-  if (s.includes('out of paper') || s.includes('outofpaper') || s.includes('paper out') || s.includes('paperout') || s.includes('sin papel'))
+  if (s.includes('out of paper') || s.includes('outofpaper') || s.includes('paper out') ||
+      s.includes('paperout') || s.includes('sin papel') || s.includes('nopaper') || s.includes('no paper'))
     return 'Sin papel en la impresora'
   if (s.includes('jammed') || s.includes('jam') || s.includes('atasco')) return 'Atasco de papel'
   if (s.includes('offline') || s.includes('desconectada')) return 'Impresora desconectada (offline)'
-  if (s.includes('user intervention') || s.includes('intervention')) return 'La impresora requiere intervención del usuario'
+  if (s.includes('user intervention') || s.includes('intervention') || s.includes('userintervention'))
+    return 'La impresora requiere intervención del usuario'
   if (s.includes('blocked')) return 'Trabajo bloqueado por la impresora'
   if (s.includes('paper problem') || s.includes('paperproblem')) return 'Problema con el papel'
   if (s.includes('paused') || s.includes('pause')) return 'La impresora está en pausa'
@@ -212,7 +227,7 @@ async function waitForJobCompletion(
   // ── Phase 1: find our job ID ───────────────────────────────────────────────
   let ourJobId: number | null = null
   const phase1Deadline = t0 + 8_000
-  let lastState: PrintState2 = { jobs: [], printer: { isError: false, message: '' } }
+  let lastState: PrintState2 = { jobs: [], printer: { isError: false, message: '' }, printerQueried: false }
 
   while (Date.now() < phase1Deadline) {
     try { lastState = await queryPrintState(printerName) }
@@ -233,8 +248,11 @@ async function waitForJobCompletion(
   if (ourJobId === null) {
     // Job was never observed in queue after Phase 1.
     // Fast-completion: virtual/local printers can process jobs before our first poll.
-    // verifyNoLatePrinterError: 1 check is sufficient (3 was wasteful — each PS call ~2s)
     const verifyState = await queryPrintState(printerName)
+    // If Get-Printer failed (printerQueried=false), we have no evidence printer is healthy —
+    // don't assume success when we can't confirm.
+    if (!verifyState.printerQueried)
+      throw new Error(mapPrintErrorMessage('No se pudo confirmar el estado de la cola de impresión'))
     if (verifyState.printer.isError)
       throw new Error(mapPrintErrorMessage(verifyState.printer.message))
     log.info(`  [+${Date.now() - t0}ms] Job not observed — printer healthy, fast completion assumed`)
@@ -253,6 +271,11 @@ async function waitForJobCompletion(
     if (!ourJob) {
       // Job left queue — do one quick late-error check before confirming success
       const verifyState = await queryPrintState(printerName)
+      if (!verifyState.printerQueried) {
+        // Get-Printer failed but job did leave queue — log warning, treat as success
+        log.warn(`  [+${Date.now() - t0}ms] Job ${ourJobId} left queue — Get-Printer unavailable for late-error check`)
+        return new Set(verifyState.jobs.map(j => j.id))
+      }
       if (verifyState.printer.isError)
         throw new Error(mapPrintErrorMessage(verifyState.printer.message))
       log.info(`  [+${Date.now() - t0}ms] Job ${ourJobId} left queue — confirmed`)
