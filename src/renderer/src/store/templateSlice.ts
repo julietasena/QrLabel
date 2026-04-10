@@ -249,7 +249,7 @@ export const createTemplateSlice: StateCreator<BoundStore, [], [], TemplateSlice
         Object.assign(b, changes)
         // Clamp size using the rotation-aware max: a rotated QR occupies
         // sizeMm·(|cosθ|+|sinθ|) on each axis, so the axis-aligned max is wrong.
-        b.sizeMm = Math.max(1, Math.min(b.sizeMm, maxQrSizeMm(b.rotationDeg, ld.widthMm, ld.heightMm)))
+        b.sizeMm = Math.max(1, Math.min(b.sizeMm, maxQrSizeMm(b, ld.widthMm, ld.heightMm)))
         // Clamp position using rotation-aware bounds so the whole rotated
         // footprint (QR + text) stays within the label. Fixes position jumps
         // when rotation changes via drag or manual panel input.

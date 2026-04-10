@@ -45,19 +45,17 @@ Three distinct processes communicate via IPC:
 - **`src/main/`** — Node.js main process. Manages window creation, native menus, file I/O, and printing. IPC handlers in `src/main/ipc/` expose template CRUD and print queue. Templates are stored as JSON in `%APPDATA%\QRLabel\templates\*.json`.
 - **`src/preload/index.ts`** — Context bridge. Exposes a safe `window.electronAPI.*` API to the renderer (never leaks Node APIs).
 - **`src/renderer/src/`** — Chromium/React renderer. No direct Node.js access; all main-process operations go through `window.electronAPI`.
-- **`src/shared/`** — Code shared between main and renderer: Zod schemas, unit conversion, number formatting, QR generation.
+- **`src/shared/`** — Code shared between main and renderer: Zod schemas, unit conversion, number formatting, QR generation, geometry utilities.
 
 ### State Management
 
-Single Zustand store (`src/renderer/src/store/templateStore.ts`) with Immer for immutable mutations. Contains:
-- Template data (the document being edited)
-- UI state (`EditorMode`: `'label' | 'sheet'`, independent `labelZoom`/`sheetZoom`, scroll positions, `showRuler`, `showGrid`)
-- `HUDState` — live position/size/rotation values shown during drag/scale/rotate
-- 50-snapshot undo/redo history
-- Dirty flag for unsaved changes
-- Module-level `clipboard` variable (copy/paste of `QrBlock`s or `Placement`s — intentionally **not** part of undo snapshots)
+The Zustand store is composed from two slices:
+- **`src/renderer/src/store/uiSlice.ts`** — UI state: `EditorMode` (`'label' | 'sheet'`), independent `labelZoom`/`sheetZoom` (the active one is mirrored into `zoom`), scroll positions, `showRuler`, `showGrid`, `selectedIds`, `HUDState`.
+- **`src/renderer/src/store/templateSlice.ts`** — Template data, undo/redo history (50 snapshots), dirty flag, and all mutation actions. Also holds a module-level `clipboard` variable (copy/paste of `QrBlock`s or `Placement`s — intentionally **not** part of undo snapshots).
 
-The store exports `textOverhang(ld: LabelDesign)` — a utility that estimates how far text extends beyond label boundaries (used for placement clamping).
+Both are combined in `templateStore.ts` via `create<TemplateStore>()`. Import the hook as `useTemplateStore`.
+
+`HUDState` — live position/size/rotation values shown during drag/scale/rotate.
 
 ### Canvas Editing (Konva)
 
@@ -86,36 +84,40 @@ All types are defined and validated in `src/shared/schema.ts` using Zod. Key typ
 ### Print Flow
 
 1. User opens `PrintDialog` → selects printer, start/end numbers.
-2. Main process spawns one hidden `BrowserWindow` per page.
+2. Main process iterates pages; for each page it spawns one hidden `BrowserWindow`.
 3. `src/main/print/pageRenderer.ts` generates HTML with **inline SVG** (not data-URL) QR codes — Chromium rejects nested data-URLs in print. `pageSize` in `WebContentsPrintOptions` is in **microns** (1 mm = 1000 µm).
 4. On the last page, `placements` and `payloads` are sliced to the actual count — no padding with the last number.
-5. Each page has **3 retry attempts** (2 s backoff) and a **15 s** HTML-load timeout. On failure the job pauses; the user can resume (retries same page) or cancel.
-6. Print progress tracked via IPC events; supports pause/resume/cancel.
-7. History of last 50 print jobs stored per template.
+5. After submitting a page to the spooler, the main process monitors the Windows print queue via **PowerShell** (`Get-PrintJob` + `Get-Printer` combined in a single PS call per query). If an error is detected the job pauses; the user can resume (retries same page) or cancel. There is no automatic retry limit — retries are user-driven.
+6. HTML-load timeout is **15 s**. PS queries time out at 12 s. Queue-wait timeout is 90 s.
+7. Print progress tracked via `print:progress` IPC events; supports pause/resume/cancel.
+8. History of last 50 print jobs stored per template.
 
 ### Text rendering (single-line vs wrap)
 
 When `wrapText=false`:
 - **Konva**: `<Text>` has no `width` prop (auto-sizes to content). `textX` is computed via `textRef.getTextWidth()` in `useLayoutEffect` to center over the QR.
-- **Print HTML**: text div uses full label width (`left: -block.xMm; width: labelWidthMm`) so long single-line text doesn't get clipped by the label's `overflow:hidden`.
+- **Print HTML**: text div uses `left:50%; transform:translateX(-50%)` with `white-space:nowrap` so long single-line text is visually centered over the QR without being clipped.
 
 When `wrapText=true`:
 - **Konva**: `width={sp}`, `wrap='word'`, `align='center'`.
-- **Print HTML**: `width: block.sizeMm`, `white-space: normal`.
+- **Print HTML**: `left:0; width:block.sizeMm`, `white-space:normal`.
 
 ### Unit conversion
 
 All stored values are in **millimetres**. `src/shared/units.ts` provides the key conversions:
 - `mmToKonva(mm, zoom)` / `konvaToMm(px, zoom)` — converts between mm data model and Konva canvas pixels at 96 DPI base (`MM_TO_PX_BASE ≈ 3.78 px/mm`).
 - `mmToUnit` / `unitToMm` — converts between mm and the template's display unit (`mm | cm | px`).
-- `PT_TO_MM = 25.4 / 72` — typographic point to mm, used in `textOverhang()`.
+- `PT_TO_MM = 25.4 / 72` — typographic point to mm, used in geometry calculations.
 
 ### Number formatting
 
 `src/shared/numberFormat.ts` provides utilities used by both renderer and print:
 - `formatPayload(num, cfg)` — formats a number into the QR payload string (`prefix + zero-padded + suffix`).
 - `previewPayloadFromConfig(cfg)` — shorthand for formatting `cfg.previewNumber`.
-- `countLabels(cfg)` — computes how many labels a given `start/end/step` range produces.
+- `countLabels(cfg)` — computes how many distinct label numbers a given `start/end/step` range produces.
+- `computePageCount(labelCount, placementCount, mode)` — pages needed for a job (differs by `numberingMode`: offset mode uses one page per number; sequential fills pages with placements).
+- `computeTotalLabels(labelCount, placementCount, mode)` — total physical labels printed.
+- `getPreviewPayload(pc, placementIndex, numberOffset)` — payload string for a specific placement slot in the canvas preview.
 - `validatePrintRange(start, end, step)` — returns an error string or `null`.
 
 `PAGE_PRESETS` in `schema.ts` maps preset names (`A4`, `Legal`, `Oficio`) to `{ widthMm, heightMm }`. `custom` is a valid `PagePreset` enum value but has no entry in `PAGE_PRESETS`.
@@ -123,6 +125,13 @@ All stored values are in **millimetres**. `src/shared/units.ts` provides the key
 ### QR generation & caching
 
 `src/shared/qr.ts` maintains two in-memory caches (payload → SVG string, payload → data-URL). Use `generateQrSvgString` for print HTML (inline SVG) and `generateQrDataUrl` for the Konva canvas preview. Call `clearQrCache()` when the print config changes in a way that alters payloads (the store does this automatically). Error correction level is fixed at `'M'` with margin 4.
+
+### Geometry utilities
+
+`src/shared/geometry.ts` contains rotation-aware math used by both the store and the canvases:
+- `textOverhang(ld: LabelDesign)` — estimates how far text extends beyond the label's top/bottom edges (mm). Used to tighten Y bounds so text stays within the page.
+- `qrBlockValidBounds(b, labelWMm, labelHMm)` — returns `{minXMm, maxXMm, minYMm, maxYMm}` for the block origin so the entire rotated QR + text footprint stays within the label.
+- `maxQrSizeMm(rotationDeg, labelWMm, labelHMm)` — maximum QR size before the rotated square exceeds the label dimensions.
 
 ### Multi-select & alignment
 
