@@ -52,12 +52,12 @@ export function SheetConfigPanel() {
               }}
               style={{
                 flex: 1, border: 'none', borderRadius: 0, cursor: 'pointer',
-                fontSize: 11, padding: '5px 0',
+                fontSize: 11, padding: '5px 8px',
                 background: active ? 'var(--accent)' : 'var(--bg3)',
                 color: active ? '#fff' : 'var(--text2)',
                 fontWeight: active ? 600 : 400
               }}>
-              {isLandscape ? '⬛ Horizontal' : '▬ Vertical'}
+              {isLandscape ? 'Horizontal' : 'Vertical'}
             </button>
           )
         })}
@@ -92,7 +92,7 @@ export function SheetConfigPanel() {
             onClick={() => updatePrintConfig({ numberingMode: mode })}
             style={{
               flex: 1, border: 'none', borderRadius: 0, cursor: 'pointer',
-              fontSize: 11, padding: '5px 0',
+              fontSize: 11, padding: '5px 8px',
               background: numberingMode === mode ? 'var(--accent)' : 'var(--bg3)',
               color: numberingMode === mode ? '#fff' : 'var(--text2)',
               fontWeight: numberingMode === mode ? 600 : 400

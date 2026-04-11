@@ -80,7 +80,7 @@ export interface TemplateSlice {
   copySelected: () => void
   pasteClipboard: () => void
   updateManyQrBlocks: (updates: { id: string; xMm: number; yMm: number }[]) => void
-  updateManyPlacements: (updates: { id: string; xMm: number; yMm: number }[]) => void
+  updateManyPlacements: (updates: { id: string; xMm: number; yMm: number; rotationDeg?: number }[]) => void
 
   // Alignment
   alignQrBlocks: (axis: 'left' | 'right' | 'top' | 'bottom' | 'centerH' | 'centerV') => void
@@ -467,9 +467,10 @@ export const createTemplateSlice: StateCreator<BoundStore, [], [], TemplateSlice
     set({
       ...withUndo(s),
       template: produce(s.template, d => {
-        for (const { id, xMm, yMm } of updates) {
+        for (const { id, xMm, yMm, rotationDeg } of updates) {
           const p = d.placements.find(x => x.id === id)
           if (!p) continue
+          if (rotationDeg !== undefined) p.rotationDeg = rotationDeg
           p.xMm = Math.max(0, Math.min(pg.widthMm  - ld.widthMm,  xMm))
           p.yMm = Math.max(oh.top, Math.min(pg.heightMm - ld.heightMm - oh.bottom, yMm))
         }

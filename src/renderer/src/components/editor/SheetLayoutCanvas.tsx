@@ -115,18 +115,15 @@ interface PlacementNodeProps {
   onDragStart: (id: string) => void
   onDragEnd: (id: string, xMm: number, yMm: number) => void
   onMultiDragMove: (id: string) => void
-  onTransformEnd: (id: string, rotDeg: number, xMm: number, yMm: number) => void
   onDragMove: (xPx: number, yPx: number, mx: number, my: number) => void
-  onRotate: (deg: number, mx: number, my: number) => void
   onInteractEnd: () => void
-  snapDeg: (deg: number) => number
 }
 
 function PlacementNode({
   placement, labelDesign, zoom, payload, index,
   pageWMm, pageHMm, layerOffsetX, layerOffsetY,
   isSelected, onRef, onSelect, onDragStart, onDragEnd, onMultiDragMove,
-  onTransformEnd, onDragMove, onRotate, onInteractEnd, snapDeg,
+  onDragMove, onInteractEnd,
 }: PlacementNodeProps) {
   const groupRef = useRef<Konva.Group>(null)
 
@@ -134,11 +131,8 @@ function PlacementNode({
     if (groupRef.current) onRef(placement.id, groupRef.current)
     return () => { onRef(placement.id, null) }
   }, []) // eslint-disable-line
-  const trRef    = useRef<Konva.Transformer>(null)
   const qrImg = useQrImage(payload)
   const toK = (mm: number) => mmToKonva(mm, zoom)
-
-  useTransformerAttach(isSelected, trRef, groupRef)
 
   const ldW = labelDesign.widthMm, ldH = labelDesign.heightMm
   const lw = toK(ldW), lh = toK(ldH)
@@ -180,23 +174,6 @@ function PlacementNode({
           onDragEnd(placement.id, konvaToMm(e.target.x(), zoom), konvaToMm(e.target.y(), zoom))
           onInteractEnd()
         }}
-        onTransform={e => {
-          const n = e.target as Konva.Group
-          onRotate(n.rotation(), (e.evt as MouseEvent).clientX, (e.evt as MouseEvent).clientY)
-        }}
-        onTransformEnd={e => {
-          const n = e.target as Konva.Group; n.scaleX(1); n.scaleY(1)
-          const rotDeg = snapDeg(((n.rotation() % 360) + 360) % 360) % 360
-
-          // After rotation changes, re-compute valid bounds for the new angle
-          // and clamp current position to the new valid range
-          const b = rotatedPlacementBounds(ldW, ldH, rotDeg, pageWMm, pageHMm)
-          const xMm = Math.max(b.minXMm, Math.min(b.maxXMm, konvaToMm(n.x(), zoom)))
-          const yMm = Math.max(b.minYMm, Math.min(b.maxYMm, konvaToMm(n.y(), zoom)))
-
-          onTransformEnd(placement.id, rotDeg, xMm, yMm)
-          onInteractEnd()
-        }}
       >
         {/* Label background */}
         <Rect x={0} y={0} width={lw} height={lh} fill="white"
@@ -212,11 +189,6 @@ function PlacementNode({
           fontSize={Math.max(7, 8 * zoom)} fill="rgba(100,100,220,0.8)" listening={false} />
       </Group>
 
-      {isSelected && (
-        <Transformer ref={trRef} keepRatio={false} resizeEnabled={false} rotateEnabled
-          borderStroke="#7c6af7" anchorStroke="#7c6af7" anchorFill="#fff"
-          rotateAnchorOffset={24} />
-      )}
     </>
   )
 }
@@ -248,6 +220,9 @@ export function SheetLayoutCanvas() {
   const contentLayerRef     = useRef<Konva.Layer>(null)
   const placementGroupRefs  = useRef<Map<string, Konva.Group>>(new Map())
   const multiDragStart      = useRef<Map<string, { x: number; y: number }> | null>(null)
+  const sharedTrRef         = useRef<Konva.Transformer>(null)
+
+  const snapDeg = useCallback((deg: number) => snapRotDeg ? Math.round(deg / snapRotDeg) * snapRotDeg : deg, [snapRotDeg])
 
   const handlePlacementRef = useCallback((id: string, node: Konva.Group | null) => {
     if (node) placementGroupRefs.current.set(id, node)
@@ -299,6 +274,7 @@ export function SheetLayoutCanvas() {
     useTemplateStore.getState().updateManyPlacements(updates)
     multiDragStart.current = null
   }, [updatePlacement])
+
   const [scroll, setScroll] = useState({ x: 0, y: 0 })
   const [containerSize, setContainerSize] = useState({ w: 800, h: 600 })
 
@@ -320,8 +296,6 @@ export function SheetLayoutCanvas() {
   const totalH = Math.max(containerSize.h - rl, contentH + CANVAS_MARGIN * 2)
   const rulerOriginX = contentX - scroll.x + rl
   const rulerOriginY = contentY - scroll.y + rl
-
-  const snapDeg = (deg: number) => snapRotDeg ? Math.round(deg / snapRotDeg) * snapRotDeg : deg
 
   useEffect(() => {
     const el = scrollRef.current; if (!el) return
@@ -349,6 +323,17 @@ export function SheetLayoutCanvas() {
   useEffect(() => {
     contentLayerRef.current?.batchDraw()
   }, [labelDesign])
+
+  // Sync shared Transformer to the currently selected placement nodes
+  useEffect(() => {
+    const tr = sharedTrRef.current
+    if (!tr) return
+    const nodes = selectedIds
+      .map(id => placementGroupRefs.current.get(id))
+      .filter((n): n is Konva.Group => !!n)
+    tr.nodes(nodes)
+    tr.getLayer()?.batchDraw()
+  }, [selectedIds])
 
   useEffect(() => {
     const h = (e: KeyboardEvent) => {
@@ -486,13 +471,57 @@ export function SheetLayoutCanvas() {
                     }}
                     onDragStart={handlePlacementDragStart}
                     onMultiDragMove={handlePlacementMultiDragMove}
-                    onDragMove={showDrag} onRotate={showRotate} onInteractEnd={hide}
-                    snapDeg={snapDeg}
+                    onDragMove={showDrag} onInteractEnd={hide}
                     onDragEnd={handlePlacementDragEnd}
-                    onTransformEnd={(id, rotationDeg, xMm, yMm) =>
-                      updatePlacement(id, { rotationDeg, xMm, yMm })}
                   />
                 ))}
+
+                {/* Shared Transformer — attached to all selected nodes at once.
+                    Konva rotates them around the center of their combined bounding box. */}
+                <Transformer
+                  ref={sharedTrRef}
+                  keepRatio={false}
+                  resizeEnabled={false}
+                  rotateEnabled
+                  borderStroke="#7c6af7"
+                  anchorStroke="#7c6af7"
+                  anchorFill="#fff"
+                  rotateAnchorOffset={24}
+                  onTransform={e => {
+                    const nodes = sharedTrRef.current?.nodes() ?? []
+                    if (nodes.length > 0)
+                      showRotate(nodes[0].rotation(), (e.evt as MouseEvent).clientX, (e.evt as MouseEvent).clientY)
+                  }}
+                  onTransformEnd={e => {
+                    const z  = useTemplateStore.getState().zoom
+                    const ld = useTemplateStore.getState().template.labelDesign
+                    const pg = useTemplateStore.getState().template.page
+                    const updates = (sharedTrRef.current?.nodes() ?? []).map(node => {
+                      const g = node as Konva.Group
+                      g.scaleX(1); g.scaleY(1)
+                      const rot = snapDeg(((g.rotation() % 360) + 360) % 360) % 360
+                      const b = rotatedPlacementBounds(ld.widthMm, ld.heightMm, rot, pg.widthMm, pg.heightMm)
+                      // Reverse-lookup: find placement id from the group node
+                      let id = ''
+                      for (const [pid, pnode] of placementGroupRefs.current) {
+                        if (pnode === g) { id = pid; break }
+                      }
+                      return {
+                        id,
+                        rotationDeg: rot,
+                        xMm: Math.max(b.minXMm, Math.min(b.maxXMm, konvaToMm(g.x(), z))),
+                        yMm: Math.max(b.minYMm, Math.min(b.maxYMm, konvaToMm(g.y(), z))),
+                      }
+                    }).filter(u => u.id !== '')
+                    if (updates.length === 1) {
+                      updatePlacement(updates[0].id, { rotationDeg: updates[0].rotationDeg, xMm: updates[0].xMm, yMm: updates[0].yMm })
+                    } else if (updates.length > 1) {
+                      useTemplateStore.getState().updateManyPlacements(updates)
+                    }
+                    hide()
+                  }}
+                />
+
                 {/* Rubber-band selection rectangle */}
                 {selBox && (
                   <Rect
