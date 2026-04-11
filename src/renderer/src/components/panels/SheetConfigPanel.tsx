@@ -41,8 +41,30 @@ export function SheetConfigPanel() {
         </select>
       </div>
 
+      <div style={{ display: 'flex', gap: 0, borderRadius: 6, overflow: 'hidden', border: '1px solid var(--border)', marginTop: 4 }}>
+        {([false, true] as const).map(isLandscape => {
+          const active = isLandscape ? page.widthMm >= page.heightMm : page.widthMm < page.heightMm
+          return (
+            <button key={String(isLandscape)}
+              onMouseDown={e => e.preventDefault()}
+              onClick={() => {
+                if (!active) updatePage({ ...page, widthMm: page.heightMm, heightMm: page.widthMm })
+              }}
+              style={{
+                flex: 1, border: 'none', borderRadius: 0, cursor: 'pointer',
+                fontSize: 11, padding: '5px 0',
+                background: active ? 'var(--accent)' : 'var(--bg3)',
+                color: active ? '#fff' : 'var(--text2)',
+                fontWeight: active ? 600 : 400
+              }}>
+              {isLandscape ? '⬛ Horizontal' : '▬ Vertical'}
+            </button>
+          )
+        })}
+      </div>
+
       {page.preset === 'custom' && (
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginTop: 4 }}>
           <NumberInput label={`Ancho (${u.label})`} value={u.toDisplay(page.widthMm)} min={u.toDisplay(10)} step={step}
             onChange={v => updatePage({ ...page, widthMm: u.fromDisplay(v) })} />
           <NumberInput label={`Alto (${u.label})`} value={u.toDisplay(page.heightMm)} min={u.toDisplay(10)} step={step}
@@ -50,7 +72,7 @@ export function SheetConfigPanel() {
         </div>
       )}
 
-      <div style={{ padding: '4px 0', borderTop: '1px solid var(--border)', marginTop: 2 }}>
+      <div style={{ padding: '4px 0', borderTop: '1px solid var(--border)', marginTop: 4 }}>
         <div style={{ fontSize: 11, color: 'var(--text2)', marginBottom: 6 }}>
           {u.fmt(page.widthMm)} × {u.fmt(page.heightMm)} {u.label}
         </div>
