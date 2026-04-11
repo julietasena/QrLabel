@@ -141,14 +141,8 @@ export function EditorPage({ onBack }: Props) {
     }
     const t = useTemplateStore.getState().template
     const name = currentFilename ?? t.name
-    // After a successful print, advance previewNumber to the next expected start so the
-    // canvas preview and the print dialog both default to the correct continuation number.
-    const nextPreview = finalProgress.status === 'done'
-      ? end + printConfig.step
-      : t.printConfig.previewNumber
     const updated = {
       ...t,
-      printConfig: { ...t.printConfig, previewNumber: nextPreview },
       printHistory: { records: [record, ...t.printHistory.records].slice(0, 50) }
     }
     setTemplate(updated, name)

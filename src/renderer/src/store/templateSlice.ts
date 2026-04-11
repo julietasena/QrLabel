@@ -124,11 +124,7 @@ export const createTemplateSlice: StateCreator<BoundStore, [], [], TemplateSlice
     // Runtime editing supports only mm/cm, so normalize to mm at load boundary.
     const normalizedUnit: Unit = t.unit === 'px' ? 'mm' : t.unit
     const normalizedTemplate = normalizedUnit === t.unit ? t : { ...t, unit: normalizedUnit }
-    // Sync previewNumber from lastRecord so the canvas always shows the next expected number.
-    const lastRec = normalizedTemplate.printHistory.records[0]
-    const syncedTemplate = lastRec
-      ? { ...normalizedTemplate, printConfig: { ...normalizedTemplate.printConfig, previewNumber: lastRec.end + lastRec.step } }
-      : normalizedTemplate
+    const syncedTemplate = normalizedTemplate
     set({
       template: syncedTemplate,
       isDirty: false,

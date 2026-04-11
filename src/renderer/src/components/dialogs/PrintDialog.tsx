@@ -23,10 +23,9 @@ export function PrintDialog({ onClose, onStartPrint }: Props) {
 
   const [printers, setPrinters] = useState<{ name: string; isDefault: boolean }[]>([])
   const [printerName, setPrinterName] = useState('')
-  // previewNumber is the canonical "next start" — kept in sync with the canvas preview
-  // and updated automatically after each successful print (see EditorPage.handleProgressClose).
-  const [start, setStart] = useState(() => printConfig.previewNumber)
-  const [end, setEnd]     = useState(() => printConfig.previewNumber + printConfig.step * 99)
+  const nextStart = lastRecord ? lastRecord.end + lastRecord.step : printConfig.previewNumber
+  const [start, setStart] = useState(() => nextStart)
+  const [end, setEnd]     = useState(() => nextStart)
   const [error, setError] = useState<string | null>(null)
 
   const { padWidth, prefix, suffix, step, numberingMode } = printConfig
