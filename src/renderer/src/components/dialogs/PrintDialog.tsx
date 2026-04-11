@@ -33,7 +33,8 @@ export function PrintDialog({ onClose, onStartPrint }: Props) {
   useEffect(() => {
     window.electronAPI.getPrinters().then(ps => {
       setPrinters(ps)
-      const def = ps.find(p => p.isDefault) ?? ps[0]
+      const last = lastRecord?.printerName ? ps.find(p => p.name === lastRecord.printerName) : null
+      const def = last ?? ps.find(p => p.isDefault) ?? ps[0]
       if (def) setPrinterName(def.name)
     })
   }, [])
