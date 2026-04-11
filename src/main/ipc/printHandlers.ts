@@ -289,9 +289,8 @@ async function printOnePage(
   printerName: string,
   pageWidthMm: number,
   pageHeightMm: number,
-  preSnapshot: Set<number>,
   onSpooled: () => void
-): Promise<Set<number>> {
+): Promise<void> {
   const win = new BrowserWindow({
     show: false,
     width:  Math.ceil(pageWidthMm  * PX_PER_MM) + 100,
@@ -302,16 +301,14 @@ async function printOnePage(
     }
   })
 
-  let printSnapshot: Set<number>
   try {
     await loadHtml(win, html)
 
-    // Query print state AFTER load: provides fresh snapshot minimizing the window
-    // where other apps could submit jobs, and the ~2s PS duration stabilizes render.
-    // Also checks printer health before submitting.
+    // Query print state AFTER load: the ~2s PS duration stabilizes render and
+    // checks printer health before submitting. No snapshot needed — we no longer
+    // wait for the job to leave the queue.
     const ps = await queryPrintState(printerName)
     if (ps.printer.isError) throw new Error(mapPrintErrorMessage(ps.printer.message))
-    printSnapshot = new Set(ps.jobs.map(j => j.id))
 
     await new Promise<void>((resolve, reject) => {
       win.webContents.print(
@@ -335,9 +332,6 @@ async function printOnePage(
   } finally {
     if (!win.isDestroyed()) win.destroy()
   }
-
-  // Queue monitoring runs outside try/finally — window already destroyed
-  return waitForJobCompletion(printerName, printSnapshot)
 }
 
 export function registerPrintHandlers(mainWin: BrowserWindow): void {
@@ -365,11 +359,6 @@ export function registerPrintHandlers(mainWin: BrowserWindow): void {
     send(mainWin)
 
     ;(async () => {
-      // nextSnapshot: reused between pages to avoid an extra PS call per page.
-      // Initialized to empty set — printOnePage will take a fresh snapshot before
-      // the first webContents.print() call regardless.
-      let nextSnapshot = new Set<number>()
-
       try {
         for (let pi = 0; pi < totalPages; pi++) {
           if (state.cancelFlag) break
@@ -410,12 +399,12 @@ export function registerPrintHandlers(mainWin: BrowserWindow): void {
             labelDesign, placements: pagePlacements, payloads
           })
 
-          // ── Print and monitor (retry on error with user intervention) ───────
+          // ── Spool page (retry on error with user intervention) ──────────────
           let pageOk = false
           while (!pageOk && !state.cancelFlag) {
             try {
-              nextSnapshot = await printOnePage(
-                html, printerName, page.widthMm, page.heightMm, nextSnapshot,
+              await printOnePage(
+                html, printerName, page.widthMm, page.heightMm,
                 () => { state.status = 'spooled'; send(mainWin) }
               )
 
@@ -423,7 +412,7 @@ export function registerPrintHandlers(mainWin: BrowserWindow): void {
               state.confirmedLabels += payloads.length
               state.status = 'printing'
               send(mainWin)
-              log.info(`  Page ${state.currentPage} confirmed (${state.confirmedPages}/${totalPages})`)
+              log.info(`  Page ${state.currentPage} sent (${state.confirmedPages}/${totalPages})`)
               pageOk = true
 
             } catch (err) {
@@ -436,8 +425,6 @@ export function registerPrintHandlers(mainWin: BrowserWindow): void {
               const cont = await waitResume()
               if (!cont) break
 
-              // Resumed — reset snapshot so printOnePage takes a fresh one before retry
-              nextSnapshot = new Set()
               state.status = 'printing'
               send(mainWin)
             }

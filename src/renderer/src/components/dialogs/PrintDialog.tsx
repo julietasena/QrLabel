@@ -126,11 +126,19 @@ export function PrintDialog({ onClose, onStartPrint }: Props) {
         </div>
 
         {/* Range */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 12 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginBottom: 12 }}>
           <NumberInput label="Desde" value={start} min={0} step={1}
             onChange={v => { const s = Math.max(0, Math.floor(v)); setStart(s); if (end < s) setEnd(s) }} />
           <NumberInput label="Hasta (inclusive)" value={end} min={start} step={1}
             onChange={v => setEnd(Math.max(start, Math.floor(v)))} />
+          <NumberInput label="Hojas" value={pageCount} min={1} step={1}
+            onChange={v => {
+              const sheets = Math.max(1, Math.floor(v))
+              const newLabelCount = numberingMode === 'offset'
+                ? sheets
+                : sheets * Math.max(1, placements.length)
+              setEnd(start + (newLabelCount - 1) * step)
+            }} />
         </div>
 
         {/* Preview */}

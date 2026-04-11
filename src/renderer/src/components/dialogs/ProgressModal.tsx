@@ -66,7 +66,7 @@ export function ProgressModal({ onClose }: Props) {
       <div className="modal" style={{ minWidth: 440 }}>
         <h2 style={{ marginBottom: 16 }}>
           {printing  && '🖨 Imprimiendo...'}
-          {spooled   && '🖨 Aguardando impresora...'}
+          {spooled   && '🖨 Enviando a impresora...'}
           {paused    && '⏸ En pausa'}
           {err       && '⚠ Error de impresión'}
           {done      && '✅ Impresión completada'}
@@ -78,7 +78,7 @@ export function ProgressModal({ onClose }: Props) {
           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: 'var(--text2)', marginBottom: 5 }}>
             <span>
               {confirmedPages > 0
-                ? `Confirmada ${confirmedPages} / ${totalPages}`
+                ? `Enviada ${confirmedPages} / ${totalPages}`
                 : (printing || spooled) && currentPage > 0
                   ? `Procesando ${currentPage} / ${totalPages}`
                   : `0 / ${totalPages}`}
@@ -109,7 +109,7 @@ export function ProgressModal({ onClose }: Props) {
         {/* Spooled note */}
         {spooled && (
           <p style={{ fontSize: 11, color: 'var(--text2)', marginBottom: 12 }}>
-            Trabajo enviado a la cola. Aguardando confirmación de la impresora...
+            Trabajo enviado a la cola de la impresora.
           </p>
         )}
 
@@ -144,7 +144,7 @@ export function ProgressModal({ onClose }: Props) {
         {/* Done summary */}
         {done && (
           <p style={{ fontSize: 11, color: 'var(--success)', marginBottom: 12 }}>
-            ✅ Se imprimieron {progress.confirmedPages} páginas correctamente ({progress.confirmedLabels} etiquetas).
+            ✅ Se enviaron {progress.confirmedPages} páginas a la impresora ({progress.confirmedLabels} etiquetas).
           </p>
         )}
 
