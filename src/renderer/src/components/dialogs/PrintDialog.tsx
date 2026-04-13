@@ -160,6 +160,10 @@ export function PrintDialog({ onClose, onStartPrint }: Props) {
             {placements.length > 0 ? ` (${placements.length} por hoja)` : ''}
             {overLimit ? ` — ⚠ máximo ${MAX_LABELS}` : ''}
           </div>
+          <div style={{ fontSize: 11, marginTop: 3, color: 'var(--text3)' }}>
+            Enviado a impresora: {page.widthMm} × {page.heightMm} mm
+            {page.orientation === 'landscape' ? ' (horizontal)' : ' (vertical)'}
+          </div>
         </div>
 
         {error && (

@@ -4,7 +4,7 @@ import { useTemplateStore } from '../../store/templateStore'
 import { useShallow } from 'zustand/react/shallow'
 import { NumberInput } from '../common/NumberInput'
 import { useUnits } from '../../hooks/useUnits'
-import { PAGE_PRESETS } from '../../../../shared/schema'
+import { PAGE_PRESETS, pageDisplayDims } from '../../../../shared/schema'
 import type { PagePreset, Unit, NumberingMode } from '../../../../shared/schema'
 
 export function SheetConfigPanel() {
@@ -29,7 +29,7 @@ export function SheetConfigPanel() {
           const preset = e.target.value as PagePreset
           if (preset !== 'custom') {
             const p = PAGE_PRESETS[preset as Exclude<PagePreset, 'custom'>]
-            updatePage({ preset, widthMm: p.widthMm, heightMm: p.heightMm })
+            updatePage({ preset, widthMm: p.widthMm, heightMm: p.heightMm, orientation: 'portrait' })
           } else {
             updatePage({ ...page, preset: 'custom' })
           }
@@ -43,12 +43,12 @@ export function SheetConfigPanel() {
 
       <div style={{ display: 'flex', gap: 0, borderRadius: 6, overflow: 'hidden', border: '1px solid var(--border)', marginTop: 4 }}>
         {([false, true] as const).map(isLandscape => {
-          const active = isLandscape ? page.widthMm >= page.heightMm : page.widthMm < page.heightMm
+          const active = isLandscape ? page.orientation === 'landscape' : page.orientation !== 'landscape'
           return (
             <button key={String(isLandscape)}
               onMouseDown={e => e.preventDefault()}
               onClick={() => {
-                if (!active) updatePage({ ...page, widthMm: page.heightMm, heightMm: page.widthMm })
+                if (!active) updatePage({ ...page, orientation: isLandscape ? 'landscape' : 'portrait' })
               }}
               style={{
                 flex: 1, border: 'none', borderRadius: 0, cursor: 'pointer',
@@ -73,9 +73,14 @@ export function SheetConfigPanel() {
       )}
 
       <div style={{ padding: '4px 0', borderTop: '1px solid var(--border)', marginTop: 4 }}>
-        <div style={{ fontSize: 11, color: 'var(--text2)', marginBottom: 6 }}>
-          {u.fmt(page.widthMm)} × {u.fmt(page.heightMm)} {u.label}
+        <div style={{ fontSize: 11, color: 'var(--text2)', marginBottom: 2 }}>
+          {(() => { const d = pageDisplayDims(page); return `${u.fmt(d.w)} × ${u.fmt(d.h)} ${u.label}` })()}
         </div>
+        {page.orientation === 'landscape' && (
+          <div style={{ fontSize: 10, color: 'var(--text3)' }}>
+            Físico: {u.fmt(page.widthMm)} × {u.fmt(page.heightMm)} {u.label}
+          </div>
+        )}
       </div>
 
       <div className="section-title" style={sectionTitleInset}>Unidades</div>

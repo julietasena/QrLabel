@@ -18,9 +18,18 @@ export type SnapRotation = z.infer<typeof SnapRotationSchema>
 export const PageSchema = z.object({
   preset: PagePresetSchema,
   widthMm: z.number().positive(),
-  heightMm: z.number().positive()
+  heightMm: z.number().positive(),
+  orientation: z.enum(['portrait', 'landscape']).default('portrait'),
 })
 export type Page = z.infer<typeof PageSchema>
+
+/** Returns the canvas/design dimensions respecting orientation.
+ *  Physical paper dims (widthMm/heightMm) are never modified. */
+export function pageDisplayDims(page: Page): { w: number; h: number } {
+  return page.orientation === 'landscape'
+    ? { w: page.heightMm, h: page.widthMm }
+    : { w: page.widthMm,  h: page.heightMm }
+}
 
 export const GridSchema = z.object({
   spacingMm: z.number().positive().default(5),
@@ -135,7 +144,7 @@ export function createDefaultTemplate(name = 'Nueva plantilla'): Template {
     version: 1,
     name,
     unit: 'mm',
-    page: { preset: 'A4', widthMm: 210, heightMm: 297 },
+    page: { preset: 'A4', widthMm: 210, heightMm: 297, orientation: 'portrait' },
     grid: { spacingMm: 5, snap: true, visible: true, snapRotationDeg: null },
     labelDesign: { widthMm: 50, heightMm: 30, qrBlocks: [] },
     placements: [],

@@ -2,6 +2,7 @@ import { exec } from 'child_process'
 import { ipcMain, BrowserWindow } from 'electron'
 import log from 'electron-log'
 import type { PrintJobConfig, PrintProgress } from '../../shared/schema'
+import { pageDisplayDims } from '../../shared/schema'
 import { renderPageHtml } from '../print/pageRenderer'
 import { formatPayload, computePageCount } from '../../shared/numberFormat'
 import { MM_TO_PX_BASE as PX_PER_MM } from '../../shared/units'
@@ -65,25 +66,14 @@ async function loadHtml(win: BrowserWindow, html: string): Promise<void> {
   })
 }
 
-// ── Windows print queue monitoring ────────────────────────────────────────────
+// ── Windows print queue monitoring ─────────────────────────────────────────
 //
-// Core bottleneck: every PowerShell process spawn takes 1-3s (cold start).
-// Old code: 2 separate PS calls per monitoring loop (getPrintJobs + getPrinterStatus).
-// Fix: ONE combined PS script per query — halves PS overhead per loop iteration.
-//
-// Strategy:
-//   - Take snapshot + check printer health in one PS call just before webContents.print()
-//     (replaces the explicit post-loadHtml sleep; ~2s PS duration stabilizes the render)
-//   - Phase 1: wait up to 8s for our specific job to appear
-//   - Phase 2: poll until job leaves queue (success) or error detected
-//   - Fast-completion: if job never observed AND printer healthy → success
-//     (virtual printers / fast local printers process jobs before our first poll)
-//   - waitForJobCompletion returns the final queue snapshot so the main loop can
-//     reuse it for the next page (eliminates one PS call per page from page 2 onward)
-//
-// Performance note: on machines where Windows Defender scans PS processes, each
-// PS call may take 3-5s. Combined queries bring worst-case from ~5s to ~2.5s per
-// monitoring iteration. Snapshot reuse saves an additional ~2s per page.
+// queryPrintState: one PowerShell call combining Get-PrintJob + Get-Printer.
+// Called once per page AFTER HTML load (~2s PS duration acts as render
+// stabilization and printer health check before submitting).
+// If the printer reports an error the page is not submitted and the job
+// pauses for user intervention (retry or cancel).
+// Pages are submitted fire-and-forget — no queue-wait after spooling.
 
 interface PrintJob { id: number; status: string }
 interface PrinterStatus { isError: boolean; message: string }
@@ -289,12 +279,15 @@ async function printOnePage(
   printerName: string,
   pageWidthMm: number,
   pageHeightMm: number,
+  isLandscape: boolean,
   onSpooled: () => void
 ): Promise<void> {
+  const winW = isLandscape ? pageHeightMm : pageWidthMm
+  const winH = isLandscape ? pageWidthMm  : pageHeightMm
   const win = new BrowserWindow({
     show: false,
-    width:  Math.ceil(pageWidthMm  * PX_PER_MM) + 100,
-    height: Math.ceil(pageHeightMm * PX_PER_MM) + 100,
+    width:  Math.ceil(winW * PX_PER_MM) + 100,
+    height: Math.ceil(winH * PX_PER_MM) + 100,
     webPreferences: {
       nodeIntegration: false, contextIsolation: true,
       javascript: true, images: true, backgroundThrottling: false
@@ -310,13 +303,19 @@ async function printOnePage(
     const ps = await queryPrintState(printerName)
     if (ps.printer.isError) throw new Error(mapPrintErrorMessage(ps.printer.message))
 
+    // Send physical paper dimensions as-is. The landscape flag tells the driver
+    // to rotate the output — the registered paper size in the driver matches
+    // the physical dims (width=short side, height=long side) regardless of orientation.
+    log.info(`  Print: physical=${pageWidthMm}×${pageHeightMm}mm landscape=${isLandscape} | pageSize={w:${Math.round(pageWidthMm * 1000)}µm, h:${Math.round(pageHeightMm * 1000)}µm}`)
+
     await new Promise<void>((resolve, reject) => {
       win.webContents.print(
         {
           deviceName: printerName, silent: true, printBackground: true,
           margins: { marginType: 'none' }, scaleFactor: 100,
+          landscape: isLandscape,
           pageSize: {
-            width:  Math.round(pageWidthMm  * 1000),
+            width:  Math.round(pageWidthMm * 1000),
             height: Math.round(pageHeightMm * 1000)
           }
         } as Electron.WebContentsPrintOptions,
@@ -393,9 +392,11 @@ export function registerPrintHandlers(mainWin: BrowserWindow): void {
 
           log.info(`Page ${state.currentPage}/${totalPages}: ${payloads[0]} → ${payloads[payloads.length - 1]}`)
 
-          // Render HTML (fast — pure JS string generation, no async I/O)
+          // Render HTML using display dims (swapped when landscape so content fills correctly)
+          const { w: displayW, h: displayH } = pageDisplayDims(page)
+          const isLandscape = page.orientation === 'landscape'
           const html = await renderPageHtml({
-            pageWidthMm: page.widthMm, pageHeightMm: page.heightMm,
+            pageWidthMm: displayW, pageHeightMm: displayH,
             labelDesign, placements: pagePlacements, payloads
           })
 
@@ -404,7 +405,7 @@ export function registerPrintHandlers(mainWin: BrowserWindow): void {
           while (!pageOk && !state.cancelFlag) {
             try {
               await printOnePage(
-                html, printerName, page.widthMm, page.heightMm,
+                html, printerName, page.widthMm, page.heightMm, isLandscape,
                 () => { state.status = 'spooled'; send(mainWin) }
               )
 

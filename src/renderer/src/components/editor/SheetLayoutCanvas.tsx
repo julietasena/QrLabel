@@ -13,6 +13,7 @@ import { Rulers, RULER_SIZE } from './Rulers'
 import { mmToKonva, konvaToMm } from '../../../../shared/units'
 import { getPreviewPayload } from '../../../../shared/numberFormat'
 import type { Placement, LabelDesign, QrBlock } from '../../../../shared/schema'
+import { pageDisplayDims } from '../../../../shared/schema'
 import { AlignToolbar } from './AlignToolbar'
 
 // ── Rotation-aware bounds ─────────────────────────────────────────────────────
@@ -285,8 +286,9 @@ export function SheetLayoutCanvas() {
 
   const toK = useCallback((mm: number) => mmToKonva(mm, zoom), [zoom])
 
-  const contentW = toK(page.widthMm)
-  const contentH = toK(page.heightMm)
+  const { w: pageDisplayW, h: pageDisplayH } = pageDisplayDims(page)
+  const contentW = toK(pageDisplayW)
+  const contentH = toK(pageDisplayH)
   const rl = showRuler ? RULER_SIZE : 0
 
   const contentX = CANVAS_MARGIN
@@ -412,7 +414,7 @@ export function SheetLayoutCanvas() {
 
       <div style={{ flex: 1, position: 'relative', overflow: 'hidden', background: 'var(--canvas-bg)' }}>
         {showRuler && (
-          <Rulers widthMm={page.widthMm} heightMm={page.heightMm}
+          <Rulers widthMm={pageDisplayW} heightMm={pageDisplayH}
             zoom={zoom} unit={unit} originX={rulerOriginX} originY={rulerOriginY} />
         )}
         <div
@@ -460,7 +462,7 @@ export function SheetLayoutCanvas() {
                     placement={pl} labelDesign={labelDesign} zoom={zoom}
                     payload={getPreviewPayload(printConfig, i, pl.numberOffset ?? 0)}
                     index={i}
-                    pageWMm={page.widthMm} pageHMm={page.heightMm}
+                    pageWMm={pageDisplayW} pageHMm={pageDisplayH}
                     layerOffsetX={contentX} layerOffsetY={contentY}
                     isSelected={selectedIds.includes(pl.id)}
                     onRef={handlePlacementRef}
@@ -500,7 +502,8 @@ export function SheetLayoutCanvas() {
                       const g = node as Konva.Group
                       g.scaleX(1); g.scaleY(1)
                       const rot = snapDeg(((g.rotation() % 360) + 360) % 360) % 360
-                      const b = rotatedPlacementBounds(ld.widthMm, ld.heightMm, rot, pg.widthMm, pg.heightMm)
+                      const { w: pgW, h: pgH } = pageDisplayDims(pg)
+                      const b = rotatedPlacementBounds(ld.widthMm, ld.heightMm, rot, pgW, pgH)
                       // Reverse-lookup: find placement id from the group node
                       let id = ''
                       for (const [pid, pnode] of placementGroupRefs.current) {

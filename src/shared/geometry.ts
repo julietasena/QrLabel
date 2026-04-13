@@ -73,7 +73,7 @@ export function textOverhang(ld: LabelDesign): { top: number; bottom: number } {
   let top = 0, bottom = 0
   for (const b of ld.qrBlocks) {
     if (!b.showText) continue
-    const textH = b.fontSize * PT_TO_MM * 1.2  // × line-height
+    const textH = b.fontSize * PT_TO_MM * 1.333  // × line-height
     if (b.textPosition === 'below') {
       const over = b.yMm + b.sizeMm + b.textOffsetMm + textH - ld.heightMm
       if (over > 0) bottom = Math.max(bottom, over)

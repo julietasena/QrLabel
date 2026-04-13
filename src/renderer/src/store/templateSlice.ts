@@ -2,7 +2,7 @@ import type { StateCreator } from 'zustand'
 import { produce } from 'immer'
 import { v4 as uuidv4 } from 'uuid'
 import type { Template, LabelDesign, QrBlock, Placement, Unit, Grid, Page, PrintConfig } from '../../../shared/schema'
-import { createDefaultTemplate } from '../../../shared/schema'
+import { createDefaultTemplate, pageDisplayDims } from '../../../shared/schema'
 import { clearQrCache } from '../../../shared/qr'
 import { textOverhang, qrBlockValidBounds, maxQrSizeMm } from '../../../shared/geometry'
 
@@ -170,8 +170,9 @@ export const createTemplateSlice: StateCreator<BoundStore, [], [], TemplateSlice
   updateLabelDesignSize: (w, h) => {
     const s = get()
     const pg = s.template.page
-    const clampedW = Math.min(Math.max(1, w), pg.widthMm)
-    const clampedH = Math.min(Math.max(1, h), pg.heightMm)
+    const { w: pgW, h: pgH } = pageDisplayDims(pg)
+    const clampedW = Math.min(Math.max(1, w), pgW)
+    const clampedH = Math.min(Math.max(1, h), pgH)
     set({
       ...withUndo(s),
       template: produce(s.template, d => {
@@ -180,8 +181,8 @@ export const createTemplateSlice: StateCreator<BoundStore, [], [], TemplateSlice
         // Re-clamp all placements to the new label bounds
         const oh = textOverhang(d.labelDesign)
         for (const p of d.placements) {
-          p.xMm = Math.max(0, Math.min(pg.widthMm  - clampedW,  p.xMm))
-          p.yMm = Math.max(oh.top, Math.min(pg.heightMm - clampedH - oh.bottom, p.yMm))
+          p.xMm = Math.max(0, Math.min(pgW - clampedW,  p.xMm))
+          p.yMm = Math.max(oh.top, Math.min(pgH - clampedH - oh.bottom, p.yMm))
         }
       }),
       isDirty: true
@@ -275,9 +276,10 @@ export const createTemplateSlice: StateCreator<BoundStore, [], [], TemplateSlice
     if (!src) return
     const pg = s.template.page
     const ld = s.template.labelDesign
+    const { w: pgW, h: pgH } = pageDisplayDims(pg)
     const copy: Placement = { ...structuredClone(src), id: uuidv4(),
-      xMm: Math.min(src.xMm + 3, pg.widthMm  - ld.widthMm),
-      yMm: Math.min(src.yMm + 3, pg.heightMm - ld.heightMm)
+      xMm: Math.min(src.xMm + 3, pgW - ld.widthMm),
+      yMm: Math.min(src.yMm + 3, pgH - ld.heightMm)
     }
     set({
       ...withUndo(s),
@@ -322,8 +324,9 @@ export const createTemplateSlice: StateCreator<BoundStore, [], [], TemplateSlice
         // Basic axis-aligned clamp for panel input. The canvas dragBoundFunc handles
         // rotation-aware clamping during drag. textOverhang tightens Y so text stays in page.
         const oh = textOverhang(ld)
-        p.xMm = Math.max(0, Math.min(pg.widthMm  - ld.widthMm,  p.xMm))
-        p.yMm = Math.max(oh.top, Math.min(pg.heightMm - ld.heightMm - oh.bottom, p.yMm))
+        const { w: pgW, h: pgH } = pageDisplayDims(pg)
+        p.xMm = Math.max(0, Math.min(pgW - ld.widthMm,  p.xMm))
+        p.yMm = Math.max(oh.top, Math.min(pgH - ld.heightMm - oh.bottom, p.yMm))
       }),
       isDirty: true
     })
@@ -364,12 +367,13 @@ export const createTemplateSlice: StateCreator<BoundStore, [], [], TemplateSlice
     const s = get()
     const pg = s.template.page
     const ld = s.template.labelDesign
+    const { w: pgW, h: pgH } = pageDisplayDims(pg)
     const srcs = s.template.placements.filter(p => s.selectedIds.includes(p.id))
     if (srcs.length === 0) return
     const copies: Placement[] = srcs.map(src => ({
       ...JSON.parse(JSON.stringify(src)), id: uuidv4(),
-      xMm: Math.min(src.xMm + 3, pg.widthMm  - ld.widthMm),
-      yMm: Math.min(src.yMm + 3, pg.heightMm - ld.heightMm)
+      xMm: Math.min(src.xMm + 3, pgW - ld.widthMm),
+      yMm: Math.min(src.yMm + 3, pgH - ld.heightMm)
     }))
     set({
       ...withUndo(s),
@@ -424,10 +428,11 @@ export const createTemplateSlice: StateCreator<BoundStore, [], [], TemplateSlice
     } else if (clipboard.type === 'placements' && s.mode === 'sheet') {
       const pg = s.template.page
       const ld = s.template.labelDesign
+      const { w: pgW, h: pgH } = pageDisplayDims(pg)
       const newPlacements: Placement[] = clipboard.items.map(p => ({
         ...p, id: uuidv4(),
-        xMm: Math.min(p.xMm + 3, pg.widthMm - ld.widthMm),
-        yMm: Math.min(p.yMm + 3, pg.heightMm - ld.heightMm)
+        xMm: Math.min(p.xMm + 3, pgW - ld.widthMm),
+        yMm: Math.min(p.yMm + 3, pgH - ld.heightMm)
       }))
       clipboard = { type: 'placements', items: clipboard.items.map(p => ({ ...p, xMm: p.xMm + 3, yMm: p.yMm + 3 })) }
       set({
@@ -464,6 +469,7 @@ export const createTemplateSlice: StateCreator<BoundStore, [], [], TemplateSlice
     const pg = s.template.page
     const ld = s.template.labelDesign
     const oh = textOverhang(ld)
+    const { w: pgW, h: pgH } = pageDisplayDims(pg)
     set({
       ...withUndo(s),
       template: produce(s.template, d => {
@@ -471,8 +477,8 @@ export const createTemplateSlice: StateCreator<BoundStore, [], [], TemplateSlice
           const p = d.placements.find(x => x.id === id)
           if (!p) continue
           if (rotationDeg !== undefined) p.rotationDeg = rotationDeg
-          p.xMm = Math.max(0, Math.min(pg.widthMm  - ld.widthMm,  xMm))
-          p.yMm = Math.max(oh.top, Math.min(pg.heightMm - ld.heightMm - oh.bottom, yMm))
+          p.xMm = Math.max(0, Math.min(pgW - ld.widthMm,  xMm))
+          p.yMm = Math.max(oh.top, Math.min(pgH - ld.heightMm - oh.bottom, yMm))
         }
       }),
       isDirty: true
