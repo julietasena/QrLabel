@@ -24,8 +24,8 @@ export function PrintDialog({ onClose, onStartPrint }: Props) {
   const [printers, setPrinters] = useState<{ name: string; isDefault: boolean }[]>([])
   const [printerName, setPrinterName] = useState('')
   const nextStart = lastRecord ? lastRecord.end + lastRecord.step : printConfig.previewNumber
-  const [start, setStart] = useState(() => nextStart)
-  const [end, setEnd]     = useState(() => nextStart)
+  const [start, setStart] = useState(() => printConfig.previewNumber)
+  const [end, setEnd]     = useState(() => printConfig.previewNumber)
   const [error, setError] = useState<string | null>(null)
 
   const { padWidth, prefix, suffix, step, numberingMode } = printConfig

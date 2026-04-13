@@ -59,8 +59,14 @@ export default function App() {
 
   const restoreKeyboard = (delay = 0): ReturnType<typeof setTimeout> => {
     return setTimeout(async () => {
+      const inputFocused = () => {
+        const a = document.activeElement as HTMLElement | null
+        return !!a && ['INPUT', 'TEXTAREA', 'SELECT'].includes(a.tagName) && a !== focusResetRef.current
+      }
+      if (inputFocused()) return  // teclado ya funciona — no robar foco
       await window.electronAPI.focusWindow()
       await new Promise<void>(r => setTimeout(r, 32))  // let browser thread process focus
+      if (inputFocused()) return  // usuario focuseó un input durante el await
       focusResetRef.current?.focus()
       focusResetRef.current?.blur()
     }, delay)
